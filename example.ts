@@ -85,10 +85,14 @@ const docDefinition = {
 };
 
 async function generate() {
-  const pdfDoc = await createPdf(docDefinition);
-  const pdfBytes = await pdfDoc.save();
-  await Deno.writeFile('showcase-example.pdf', pdfBytes);
+  // Get PDF as Uint8Array
+  const pdfBytes = await createPdf(docDefinition);
+  await Deno.writeFile('showcase-example.pdf', pdfBytes as Uint8Array);
   console.log('Showcase PDF generated successfully!');
+
+  // Get PDF as base64 data URI
+  const pdfBase64 = await createPdf(docDefinition, { output: 'base64' });
+  // console.log('Base64 PDF:', pdfBase64);
 }
 
 generate();

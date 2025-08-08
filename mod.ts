@@ -1,6 +1,8 @@
 import { PDFDocument, rgb, StandardFonts, PageSizes } from 'https://cdn.skypack.dev/pdf-lib';
+export * from './types.ts';
+import { PDFDocumentDefinition, ContentElement } from './types.ts';
 
-async function performLayout(docDefinition: any, font: any) {
+async function performLayout(docDefinition: PDFDocumentDefinition, font: any) {
   const { pageSize = 'A4', pageOrientation = 'portrait', content } = docDefinition;
   const margin = 50;
 
@@ -36,8 +38,8 @@ async function performLayout(docDefinition: any, font: any) {
     return lines;
   };
 
-  for (const element of content) {
-    if (element.text) {
+  for (const element of content as ContentElement[]) {
+    if ('text' in element) {
       const fontSize = element.fontSize || 12;
       const lines = wrapText(element.text, font, fontSize, width - margin * 2);
       const lineHeight = font.heightAtSize(fontSize);
@@ -56,15 +58,16 @@ async function performLayout(docDefinition: any, font: any) {
         lineY -= lineHeight;
       }
       y = lineY - 5;
-    } else if (element.image) {
+    } else if ('image' in element) {
       // Image layouting is tricky without knowing dimensions beforehand.
       // For now, we assume a fixed size or fetch it, which is slow.
       // Let's assume a fixed height for layout purposes.
-      const imageHeight = 100; // Placeholder
+      const imageHeight = element.height || 100; // Placeholder
+      const imageWidth = element.width || 150;
       if (y - imageHeight < margin) addNewPage();
-      currentPage.elements.push({ type: 'image', image: element.image, x: margin, y: y - imageHeight, width: 150, height: imageHeight });
+      currentPage.elements.push({ type: 'image', image: element.image, x: margin, y: y - imageHeight, width: imageWidth, height: imageHeight });
       y -= imageHeight + 5;
-    } else if (element.table) {
+    } else if ('table' in element) {
       const { table } = element;
       const { body, widths } = table;
       const cellMargin = 5;
@@ -133,7 +136,7 @@ async function performLayout(docDefinition: any, font: any) {
   return pages;
 }
 
-export async function createPdf(docDefinition: any): Promise<PDFDocument> {
+export async function createPdf(docDefinition: PDFDocumentDefinition, options: { output?: 'uint8array' | 'base64' } = {}): Promise<Uint8Array | string> {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
@@ -204,5 +207,8 @@ export async function createPdf(docDefinition: any): Promise<PDFDocument> {
     }
   }
 
-  return pdfDoc.saveAsBase64();
+  if (options.output === 'base64') {
+    return pdfDoc.saveAsBase64();
+  }
+  return pdfDoc.save();
 }

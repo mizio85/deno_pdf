@@ -15,6 +15,21 @@ This is a simple PDF generator for Deno, inspired by `pdfmake`. It uses `pdf-lib
 
 To use this PDF generator in your own Deno project, you can import the `createPdf` function from the `mod.ts` file.
 
+### TypeScript Support
+
+This module is written in TypeScript and exports a comprehensive set of interfaces for the document definition. You can import these types to get full auto-completion and type-safety in your editor.
+
+```typescript
+import { createPdf, PDFDocumentDefinition } from './mod.ts';
+
+const docDefinition: PDFDocumentDefinition = {
+  // Your editor will now provide auto-completion and type checking here!
+  content: [
+    { text: 'Hello, typed world!' }
+  ]
+};
+```
+
 ### Remote Import (from a URL)
 
 If you have hosted this module on a service like GitHub, you can import it directly via its raw URL.
@@ -24,9 +39,8 @@ If you have hosted this module on a service like GitHub, you can import it direc
 import { createPdf } from 'https://deno.land/x/your_module/mod.ts';
 
 const docDefinition = { /* ... */ };
-const pdfDoc = await createPdf(docDefinition);
-const pdfBytes = await pdfDoc.save();
-// now you can save the pdfBytes to a file or send it in a response
+const pdfBytes = await createPdf(docDefinition); // Returns Uint8Array by default
+const pdfBase64 = await createPdf(docDefinition, { output: 'base64' }); // Returns base64 string
 ```
 
 ### Local Import
@@ -37,8 +51,7 @@ If you have the code locally in your project, you can use a relative path.
 import { createPdf } from './path/to/deno-pdf-generator/mod.ts';
 
 const docDefinition = { /* ... */ };
-const pdfDoc = await createPdf(docDefinition);
-const pdfBytes = await pdfDoc.save();
+const pdfBytes = await createPdf(docDefinition);
 ```
 
 ## Example Usage
@@ -133,10 +146,14 @@ const docDefinition = {
 };
 
 async function generate() {
-  const pdfDoc = await createPdf(docDefinition);
-  const pdfBytes = await pdfDoc.save();
-  await Deno.writeFile('showcase-example.pdf', pdfBytes);
+  // Get PDF as Uint8Array
+  const pdfBytes = await createPdf(docDefinition);
+  await Deno.writeFile('showcase-example.pdf', pdfBytes as Uint8Array);
   console.log('Showcase PDF generated successfully!');
+
+  // Get PDF as base64 data URI
+  const pdfBase64 = await createPdf(docDefinition, { output: 'base64' });
+  // console.log('Base64 PDF:', pdfBase64);
 }
 
 generate();
