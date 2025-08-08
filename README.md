@@ -249,8 +249,31 @@ A cell can be a simple string, or an object for more control:
 ```
 
 **Table Properties:**
-- `widths`: Defines column widths. Use `*` for auto-sizing or a number for fixed width.
+
 - `body`: A 2D array of cell content.
+- `widths`: Defines column widths. This can be an array of numbers or stars (`'*'`), or the single string `'*'` for a full-width table with equal-width columns.
+  - `number`: A fixed width in points.
+  - `'*'`: Distributes the remaining available width equally among all star-sized columns.
+
+**Example: Full-Width Table**
+```json
+{
+  table: {
+    widths: '*',
+    body: [ /* ... */ ]
+  }
+}
+```
+
+**Example: Mixed Widths**
+```json
+{
+  table: {
+    widths: [100, '*', 50],
+    body: [ /* ... */ ]
+  }
+}
+```
 
 **Layout Properties:**
 - `fillColor`: An RGB array (e.g., `[0.9, 0.9, 0.9]`) for the cell background color. Can also be a function `(rowIndex) => color` for conditional row-based formatting.

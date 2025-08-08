@@ -128,6 +128,19 @@ const docDefinition: PDFDocumentDefinition = {
             'Second item',
             'Third item',
         ]
+    },
+    {
+        text: 'Full-Width Table',
+        style: 'subheader',
+    },
+    {
+      table: {
+        widths: '*',
+        body: [
+          ['This column will be one-third of the page width', 'This column will also be one-third', 'And so will this one'],
+          [{text: 'This is a test', italics: true}, 'Nothing special here', 'And nothing here either']
+        ]
+      }
     }
   ],
 };
