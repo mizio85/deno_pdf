@@ -136,9 +136,46 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
       const availableWidth = width - margins.left - margins.right;
       const numColumns = body[0]?.length || 1;
       let columnWidths: number[];
-      if (widths === '*') columnWidths = Array(numColumns).fill(availableWidth / numColumns);
-      else if (Array.isArray(widths)) columnWidths = widths.map(w => w === '*' ? availableWidth / numColumns : w);
-      else columnWidths = Array(numColumns).fill(100);
+
+      if (widths === '*') {
+        columnWidths = Array(numColumns).fill(availableWidth / numColumns);
+      } else if (Array.isArray(widths)) {
+        // Pre-calculate widths for 'auto' columns by measuring their content
+        const measuredWidths = await Promise.all(widths.map(async (w, i) => {
+          if (w !== 'auto') return w; // Pass through numbers and '*'
+
+          let maxWidth = 0;
+          for (const row of body) {
+            const cell = row[i];
+            if (!cell) continue;
+
+            const isObjectCell = typeof cell === 'object' && cell !== null;
+            const cellText = isObjectCell ? String(cell.text) : String(cell);
+            const cellElement = isObjectCell ? cell : {};
+            const cellFont = await getFont(cellElement, fonts, pdfDoc);
+
+            // Note: `fontSize` is from the table element, not yet cell-specific.
+            const textWidth = cellFont.widthOfTextAtSize(cellText, fontSize);
+            if (textWidth > maxWidth) {
+              maxWidth = textWidth;
+            }
+          }
+          return maxWidth + cellMargin * 2; // Add horizontal padding
+        }));
+
+        // Distribute remaining width to '*' columns
+        const fixedWidth = measuredWidths
+            .filter((w): w is number => typeof w === 'number')
+            .reduce((a, b) => a + b, 0);
+
+        const starColumnsCount = measuredWidths.filter(w => w === '*').length;
+        const remainingWidth = availableWidth - fixedWidth;
+        const starWidth = starColumnsCount > 0 ? remainingWidth / starColumnsCount : 0;
+
+        columnWidths = measuredWidths.map(w => (w === '*' ? starWidth : w as number));
+      } else {
+        columnWidths = Array(numColumns).fill(100); // Default fallback
+      }
 
       for (const row of body) {
         let maxLines = 0;

@@ -141,6 +141,26 @@ const docDefinition: PDFDocumentDefinition = {
           [{text: 'This is a test', italics: true}, 'Nothing special here', 'And nothing here either']
         ]
       }
+    },
+    {
+        text: 'Auto-width Table',
+        style: 'subheader',
+    },
+    {
+      table: {
+        widths: ['auto', '*', 100, 'auto'],
+        body: [
+          [{text: 'Header 1', style: 'tableHeader'}, {text: 'Header 2', style: 'tableHeader'}, {text: 'Header 3', style: 'tableHeader'}, {text: 'Header 4', style: 'tableHeader'}],
+          ['Short', 'This column will expand to fill the remaining space.', 'Fixed 100', 'This is a cell with a bit more text.'],
+          ['A much longer text content', 'Another cell', '100', 'Short'],
+          ['Medium', 'And a third one', '100', 'A cell']
+        ]
+      },
+      layout: {
+        borderColor: [0.7, 0.7, 0.7],
+        borderWidth: 0.5,
+        fillColor: (rowIndex: number) => (rowIndex === 0) ? [0.85, 0.85, 0.85] : null,
+      }
     }
   ],
 };

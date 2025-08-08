@@ -35,7 +35,7 @@ export interface TableElement {
   style?: string | string[];
   pageBreak?: 'before';
   table: {
-    widths: ('*' | number)[] | '*';
+    widths: ('*' | number | 'auto')[] | '*';
     body: TableCell[][];
   };
   fontSize?: number;
