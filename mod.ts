@@ -204,5 +204,5 @@ export async function createPdf(docDefinition: any): Promise<PDFDocument> {
     }
   }
 
-  return pdfDoc;
+  return pdfDoc.saveAsBase64();
 }
