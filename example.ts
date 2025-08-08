@@ -1,36 +1,47 @@
 import { createPdf } from './mod.ts';
 
-const longTableBody = [];
-for (let i = 1; i <= 50; i++) {
-  longTableBody.push([`Row ${i}, Col 1`, `Row ${i}, Col 2`, `Row ${i}, Col 3`]);
-}
-
 const docDefinition = {
   pageSize: 'A4',
-  pageOrientation: 'landscape',
+  pageOrientation: 'portrait',
   content: [
     {
-      text: 'A4 Landscape PDF with a Full-Width, Styled, Multi-Page Table',
-      fontSize: 20,
+      text: 'Text Alignment and Wrapping Demo',
+      fontSize: 24,
+      alignment: 'center',
       color: [0.1, 0.6, 0.9],
     },
     {
-      image: 'https://placehold.co/150x50.png',
+      text: 'This is a long paragraph that should wrap automatically to fit the page width. The quick brown fox jumps over the lazy dog. This demonstrates the automatic text wrapping feature for simple text elements. It should be aligned to the right.',
+      fontSize: 12,
+      alignment: 'right',
+    },
+    {
+      text: 'This paragraph is centered. It also contains a good amount of text to ensure that the wrapping functionality is properly tested and that the centered alignment is applied to all lines.',
+      fontSize: 12,
+      alignment: 'center',
     },
     {
       table: {
-        widths: '*',
+        widths: [100, '*', 150],
         body: [
-          ['Header 1', 'Header 2', 'Header 3'],
-          ...longTableBody,
+          [
+            { text: 'Top Aligned', alignment: 'left' },
+            { text: 'Middle Aligned', alignment: 'center', verticalAlignment: 'middle' },
+            { text: 'Bottom Aligned', alignment: 'right', verticalAlignment: 'bottom' },
+          ],
+          [
+            'This cell has a lot of text that needs to be wrapped. It should demonstrate the automatic wrapping and dynamic row height calculation. The alignment is default (top-left).',
+            { text: 'This cell is centered both horizontally and vertically.', alignment: 'center', verticalAlignment: 'middle' },
+            { text: 'This cell is bottom-right aligned.', alignment: 'right', verticalAlignment: 'bottom' },
+          ],
         ],
       },
       fontSize: 12,
       layout: {
-        fillColor: [0.9, 0.9, 0.9], // Light gray background for all cells
-        borderColor: [0.5, 0.5, 0.5], // Dark gray border
+        fillColor: [0.95, 0.95, 0.95],
+        borderColor: [0.8, 0.8, 0.8],
         borderWidth: 0.5,
-      },
+      }
     },
   ],
 };
@@ -38,7 +49,7 @@ const docDefinition = {
 async function generate() {
   const pdfBytes = await createPdf(docDefinition);
   await Deno.writeFile('example.pdf', pdfBytes);
-  console.log('PDF generated successfully with new features!');
+  console.log('PDF with advanced text layout generated successfully!');
 }
 
 generate();

@@ -25,19 +25,53 @@ export async function createPdf(docDefinition: any): Promise<Uint8Array> {
     y = page.getSize().height - margin;
   };
 
-  for (const element of content) {
-    const elementHeight = (element.fontSize || 12) + 5;
-    if (y - elementHeight < margin) addNewPage();
+  const wrapText = (text: string, font: any, fontSize: number, maxWidth: number): string[] => {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
 
+    for (const word of words) {
+      const testLine = currentLine === '' ? word : `${currentLine} ${word}`;
+      const width = font.widthOfTextAtSize(testLine, fontSize);
+      if (width < maxWidth) {
+        currentLine = testLine;
+      } else {
+        lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    lines.push(currentLine);
+    return lines;
+  };
+
+  for (const element of content) {
     if (element.text) {
-      page.drawText(element.text, {
-        x: margin,
-        y,
-        font,
-        size: element.fontSize || 12,
-        color: element.color ? rgb(element.color[0], element.color[1], element.color[2]) : rgb(0, 0, 0),
-      });
-      y -= elementHeight;
+      const fontSize = element.fontSize || 12;
+      const lines = wrapText(element.text, font, fontSize, page.getSize().width - margin * 2);
+      const lineHeight = font.heightAtSize(fontSize);
+      const totalHeight = lines.length * lineHeight;
+
+      if (y - totalHeight < margin) addNewPage();
+
+      for (const line of lines) {
+        const lineWidth = font.widthOfTextAtSize(line, fontSize);
+        let x = margin;
+        if (element.alignment === 'right') {
+          x = page.getSize().width - margin - lineWidth;
+        } else if (element.alignment === 'center') {
+          x = (page.getSize().width / 2) - (lineWidth / 2);
+        }
+
+        page.drawText(line, {
+          x,
+          y,
+          font,
+          size: fontSize,
+          color: element.color ? rgb(element.color[0], element.color[1], element.color[2]) : rgb(0, 0, 0),
+        });
+        y -= lineHeight;
+      }
+      y -= 5; // Extra space after text block
     } else if (element.image) {
       const imageBytes = await fetch(element.image).then((res) => res.arrayBuffer());
       const image = await pdfDoc.embedPng(imageBytes);
@@ -72,33 +106,61 @@ export async function createPdf(docDefinition: any): Promise<Uint8Array> {
       }
 
       for (const row of body) {
+        let maxLines = 0;
+        const wrappedCells = row.map((cell: any, i: number) => {
+          const cellText = typeof cell === 'string' ? cell : cell.text;
+          const lines = wrapText(cellText, font, fontSize, columnWidths[i] - cellMargin * 2);
+          if (lines.length > maxLines) maxLines = lines.length;
+          return lines;
+        });
+
+        const lineHeight = font.heightAtSize(fontSize);
+        const rowHeight = maxLines * lineHeight + cellMargin * 2;
+
         if (y - rowHeight < margin) addNewPage();
+
         let x = margin;
         for (let i = 0; i < row.length; i++) {
           const cell = row[i];
-          const cellWidth = columnWidths[i];
+          const cellContent = typeof cell === 'string' ? cell : cell.text;
+          const cellAlignment = typeof cell === 'object' ? cell.alignment : 'left';
+          const verticalAlignment = typeof cell === 'object' ? cell.verticalAlignment : 'top';
 
-          // Draw cell background
+          const cellWidth = columnWidths[i];
+          const lines = wrappedCells[i];
+          const textHeight = lines.length * lineHeight;
+
           if (element.layout?.fillColor) {
             page.drawRectangle({
-              x,
-              y: y - rowHeight + cellMargin,
-              width: cellWidth,
-              height: rowHeight,
+              x, y: y - rowHeight, width: cellWidth, height: rowHeight,
               color: rgb(element.layout.fillColor[0], element.layout.fillColor[1], element.layout.fillColor[2]),
             });
           }
 
-          // Draw cell text
-          page.drawText(cell, { x: x + cellMargin, y, font, size: fontSize });
+          let lineY;
+          if (verticalAlignment === 'middle') {
+            lineY = y - (rowHeight / 2) + (textHeight / 2) - cellMargin;
+          } else if (verticalAlignment === 'bottom') {
+            lineY = y - rowHeight + textHeight;
+          } else { // top
+            lineY = y - cellMargin;
+          }
 
-          // Draw cell border
+          for (const line of lines) {
+            const lineWidth = font.widthOfTextAtSize(line, fontSize);
+            let lineX = x + cellMargin;
+            if (cellAlignment === 'right') {
+              lineX = x + cellWidth - cellMargin - lineWidth;
+            } else if (cellAlignment === 'center') {
+              lineX = x + (cellWidth / 2) - (lineWidth / 2);
+            }
+            page.drawText(line, { x: lineX, y: lineY, font, size: fontSize });
+            lineY -= lineHeight;
+          }
+
           if (element.layout?.borderColor) {
             page.drawRectangle({
-              x,
-              y: y - rowHeight + cellMargin,
-              width: cellWidth,
-              height: rowHeight,
+              x, y: y - rowHeight, width: cellWidth, height: rowHeight,
               borderColor: rgb(element.layout.borderColor[0], element.layout.borderColor[1], element.layout.borderColor[2]),
               borderWidth: element.layout.borderWidth || 1,
             });

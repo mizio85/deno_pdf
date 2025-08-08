@@ -2,38 +2,41 @@
 
 This is a simple PDF generator for Deno, inspired by `pdfmake`. It uses `pdf-lib` under the hood.
 
-## Usage
+## Features
 
-To use this generator, import the `createPdf` function from `mod.ts` and pass a document definition object.
+- A4/Letter page sizes with portrait/landscape orientation.
+- Automatic text wrapping and page overflow.
+- Horizontal and vertical alignment for text.
+- Flexible table layouts with dynamic column widths and row heights.
+- Customizable table styling (fill color, borders).
+
+## Usage
 
 ```typescript
 import { createPdf } from './mod.ts';
 
 const docDefinition = {
-  pageSize: 'A4',
-  pageOrientation: 'landscape',
   content: [
     {
-      text: 'Hello from Deno PDF Generator!',
-      fontSize: 20,
-      color: [0.2, 0.5, 0.8], // RGB values between 0 and 1
-    },
-    {
-      image: 'https://placehold.co/100x100.png', // URL to a PNG image
+      text: 'This paragraph is centered and will wrap automatically.',
+      fontSize: 12,
+      alignment: 'center',
     },
     {
       table: {
-        widths: '*', // Use '*' for full-width, auto-sized columns
+        widths: [100, '*', 150],
         body: [
-          ['Header 1', 'Header 2', 'Header 3'],
-          ['One', 'Two', 'Three'],
-          ['Four', 'Five', 'Six'],
+          [
+            { text: 'Top Aligned', alignment: 'left' },
+            { text: 'Middle Aligned', alignment: 'center', verticalAlignment: 'middle' },
+            { text: 'This cell is bottom-right aligned and has a lot of text to demonstrate wrapping.', alignment: 'right', verticalAlignment: 'bottom' },
+          ],
         ],
       },
       fontSize: 12,
       layout: {
-        fillColor: [0.9, 0.9, 0.9],
-        borderColor: [0.5, 0.5, 0.5],
+        fillColor: [0.95, 0.95, 0.95],
+        borderColor: [0.8, 0.8, 0.8],
         borderWidth: 0.5,
       }
     },
@@ -49,26 +52,21 @@ async function generate() {
 generate();
 ```
 
-Then, run the script using Deno:
-
+Run the script using Deno:
 ```bash
 deno run --allow-net --allow-write --allow-import example.ts
 ```
 
-This will create a file named `example.pdf` in the same directory.
-
 ## Document Definition Structure
-
-The document definition is a JavaScript object with the following properties:
 
 ### Page Setup
 
-- `pageSize`: (Optional) The size of the page. Can be any of the sizes from `pdf-lib`'s `PageSizes` (e.g., 'A4', 'Letter'). Defaults to 'A4'.
-- `pageOrientation`: (Optional) The orientation of the page. Can be 'portrait' or 'landscape'. Defaults to 'portrait'.
+- `pageSize`: (Optional) 'A4' or 'Letter'. Defaults to 'A4'.
+- `pageOrientation`: (Optional) 'portrait' or 'landscape'. Defaults to 'portrait'.
 
-### Content
+### Content Elements
 
-The `content` property is an array of elements. Each element is an object that defines a part of the PDF.
+The `content` property is an array of elements.
 
 #### Text
 
@@ -76,9 +74,11 @@ The `content` property is an array of elements. Each element is an object that d
 {
   "text": "Your text here",
   "fontSize": 12,
-  "color": [0, 0, 0]
+  "color": [0, 0, 0],
+  "alignment": "center"
 }
 ```
+- `alignment`: (Optional) 'left', 'center', or 'right'. Defaults to 'left'.
 
 #### Images
 
@@ -87,17 +87,17 @@ The `content` property is an array of elements. Each element is an object that d
   "image": "https://path/to/your/image.png"
 }
 ```
-**Note:** Currently, only PNG images from a URL are supported.
 
 #### Tables
+
+Tables are defined by an object with `table`, `fontSize`, and `layout` properties.
 
 ```json
 {
   "table": {
-    "widths": ["*", 100], // Can be '*', an array of numbers, or a mix
+    "widths": ["*", 100],
     "body": [
-      ["Row 1, Col 1", "Row 1, Col 2"],
-      ["Row 2, Col 1", "Row 2, Col 2"]
+      // ... table rows ...
     ]
   },
   "fontSize": 12,
@@ -108,13 +108,24 @@ The `content` property is an array of elements. Each element is an object that d
   }
 }
 ```
+
+**Table Body Cells:**
+A cell can be a simple string, or an object for more control:
+```typescript
+// Simple cell
+"Cell content"
+
+// Cell with alignment
+{
+  text: "Cell content",
+  alignment: "center", // 'left', 'center', 'right'
+  verticalAlignment: "middle" // 'top', 'middle', 'bottom'
+}
+```
+
 **Table Properties:**
-- `widths`: Defines the width of each column.
-  - `*`: Distributes the available width equally among all `*` columns.
-  - `number`: A fixed width in points.
-- `body`: A 2D array of strings representing the table content.
+- `widths`: Defines column widths. Use `*` for auto-sizing or a number for fixed width.
+- `body`: A 2D array of cell content.
 
 **Layout Properties:**
-- `fillColor`: An RGB array (e.g., `[0.9, 0.9, 0.9]`) for the cell background color.
-- `borderColor`: An RGB array for the cell border color.
-- `borderWidth`: The width of the cell borders.
+- `fillColor`, `borderColor`, `borderWidth`: For styling the table cells.
