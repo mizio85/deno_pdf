@@ -32,7 +32,7 @@ export interface TableLayout {
 export interface TableElement {
   style?: string | string[];
   table: {
-    widths: ('*' | number)[];
+    widths: ('*' | number)[] | '*';
     body: TableCell[][];
   };
   fontSize?: number;

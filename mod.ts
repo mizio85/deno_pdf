@@ -28,13 +28,22 @@ async function performLayout(docDefinition: PDFDocumentDefinition, fonts: any) {
   const resolveStyles = (element: any, styles: any) => {
     if (!element.style || !styles) return element;
     const styleNames = Array.isArray(element.style) ? element.style : [element.style];
-    let mergedStyle = {};
-    for (const styleName of styleNames) {
-      if (styles[styleName]) {
-        mergedStyle = { ...mergedStyle, ...styles[styleName] };
+
+    let finalStyle = { ...element };
+
+    for (const styleName of styleNames.reverse()) { // Apply styles from right to left
+      const style = styles[styleName];
+      if (style) {
+        const mergedTable = { ...(style.table || {}), ...(finalStyle.table || {}) };
+        const mergedLayout = { ...(style.layout || {}), ...(finalStyle.layout || {}) };
+
+        finalStyle = { ...style, ...finalStyle };
+
+        if (Object.keys(mergedTable).length > 0) finalStyle.table = mergedTable;
+        if (Object.keys(mergedLayout).length > 0) finalStyle.layout = mergedLayout;
       }
     }
-    return { ...mergedStyle, ...element };
+    return finalStyle;
   };
 
   const getFontName = (element: any) => {
