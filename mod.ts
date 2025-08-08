@@ -8,7 +8,7 @@ const parseMargins = (margin: any) => {
   return { top: 50, bottom: 50, left: 50, right: 50 }; // Default
 };
 
-async function performLayout(docDefinition: PDFDocumentDefinition, fonts: any) {
+async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDocument, fonts: any) {
   const { pageSize = 'A4', pageOrientation = 'portrait', content } = docDefinition;
   const margins = parseMargins(docDefinition.margin);
 
@@ -46,20 +46,28 @@ async function performLayout(docDefinition: PDFDocumentDefinition, fonts: any) {
     return finalStyle;
   };
 
-  const getFontName = (element: any) => {
-    if (element.bold && element.italics) return 'HelveticaBoldOblique';
-    if (element.bold) return 'HelveticaBold';
-    if (element.italics) return 'HelveticaOblique';
+  const getFontName = (element: any): StandardFont => {
+    if (typeof element !== 'object' || !element) return 'Helvetica';
+    if (element.font) return element.font;
+    if (element.bold && element.italics) return 'Helvetica-BoldOblique';
+    if (element.bold) return 'Helvetica-Bold';
+    if (element.italics) return 'Helvetica-Oblique';
     return 'Helvetica';
   };
 
-  const getFont = (element: any, fonts: any) => {
-    return fonts[getFontName(element)];
+  const getFont = async (element: any, fonts: any, pdfDoc: PDFDocument) => {
+    const fontName = getFontName(element);
+    if (!fonts[fontName]) {
+      const fontKey = fontName.replace(/-/g, '') as keyof typeof StandardFonts;
+      fonts[fontName] = await pdfDoc.embedFont(StandardFonts[fontKey]);
+    }
+    return fonts[fontName];
   };
 
-  const wrapText = (text: string, font: any, fontSize: number, maxWidth: number): string[] => {
-    if (!text) return [];
-    const words = text.split(' ');
+  const wrapText = (text: any, font: any, fontSize: number, maxWidth: number): string[] => {
+    const textAsString = String(text ?? '');
+    if (!textAsString) return [];
+    const words = textAsString.split(' ');
     const lines: string[] = [];
     let currentLine = '';
     for (const word of words) {
@@ -76,8 +84,12 @@ async function performLayout(docDefinition: PDFDocumentDefinition, fonts: any) {
     return lines;
   };
 
-  for (let element of content as ContentElement[]) {
-    element = resolveStyles(element, docDefinition.styles);
+  for (const [i, initialElement] of (content as ContentElement[]).entries()) {
+    const element = resolveStyles(initialElement, docDefinition.styles);
+
+    if (element.pageBreak === 'before' && i > 0) {
+        addNewPage();
+    }
 
     if (element.margin) {
         const elementMargins = parseMargins(element.margin);
@@ -85,7 +97,7 @@ async function performLayout(docDefinition: PDFDocumentDefinition, fonts: any) {
     }
 
     if ('text' in element) {
-      const font = getFont(element, fonts);
+      const font = await getFont(element, fonts, pdfDoc);
       const fontSize = element.fontSize || 12;
       const lines = wrapText(element.text, font, fontSize, width - margins.left - margins.right);
       const lineHeight = font.heightAtSize(fontSize);
@@ -130,13 +142,23 @@ async function performLayout(docDefinition: PDFDocumentDefinition, fonts: any) {
 
       for (const row of body) {
         let maxLines = 0;
-        const wrappedCells = row.map((cell: any, i: number) => {
-          const cellText = typeof cell === 'string' ? cell : cell.text;
-          const cellFont = getFont(cell, fonts);
-          const lines = wrapText(cellText, cellFont, fontSize, columnWidths[i] - cellMargin * 2);
-          if (lines.length > maxLines) maxLines = lines.length;
-          return { ...cell, lines, font: cellFont, fontName: getFontName(cell) };
-        });
+        const wrappedCells = [];
+        for (const [i, cell] of row.entries()) {
+            const isObjectCell = typeof cell === 'object' && cell !== null;
+            const cellText = isObjectCell ? cell.text : cell;
+            const cellElement = isObjectCell ? cell : {}; // Use empty object for non-object cells to avoid errors
+
+            const cellFont = await getFont(cellElement, fonts, pdfDoc);
+            const lines = wrapText(cellText, cellFont, fontSize, columnWidths[i] - cellMargin * 2);
+            if (lines.length > maxLines) maxLines = lines.length;
+
+            wrappedCells.push({
+                ...(isObjectCell ? cell : { text: cellText }),
+                lines,
+                font: cellFont,
+                fontName: getFontName(cellElement)
+            });
+        }
 
         const lineHeight = fonts.Helvetica.heightAtSize(fontSize); // Base line height on standard font
         const rowHeight = maxLines * lineHeight + cellMargin * 2;
@@ -182,6 +204,59 @@ async function performLayout(docDefinition: PDFDocumentDefinition, fonts: any) {
       }
       y -= 10;
       if (element.margin) y -= parseMargins(element.margin).bottom;
+    } else if ('ul' in element) {
+        const font = await getFont(element, fonts, pdfDoc); // Lists can have styles
+        const fontSize = element.fontSize || 12;
+        const lineHeight = font.heightAtSize(fontSize);
+        const indent = 20;
+
+        for (const item of element.ul) {
+            const bullet = '•';
+            const bulletWidth = font.widthOfTextAtSize(bullet, fontSize);
+            const itemText = wrapText(item, font, fontSize, width - margins.left - margins.right - indent);
+
+            if (y - (itemText.length * lineHeight) < margins.bottom) addNewPage();
+
+            const ascent = lineHeight * 0.8;
+            let lineY = y - ascent;
+
+            // Draw bullet
+            currentPage.elements.push({ type: 'text', text: bullet, x: margins.left, y: lineY, fontSize, font: getFontName(element) });
+
+            // Draw item text
+            for (const line of itemText) {
+                currentPage.elements.push({ type: 'text', text: line, x: margins.left + indent, y: lineY, fontSize, font: getFontName(element) });
+                lineY -= lineHeight;
+            }
+            y = lineY;
+        }
+    } else if ('ol' in element) {
+        const font = await getFont(element, fonts, pdfDoc);
+        const fontSize = element.fontSize || 12;
+        const lineHeight = font.heightAtSize(fontSize);
+        const indent = 20;
+        let counter = 1;
+
+        for (const item of element.ol) {
+            const number = `${counter++}.`;
+            const numberWidth = font.widthOfTextAtSize(number, fontSize);
+            const itemText = wrapText(item, font, fontSize, width - margins.left - margins.right - indent - numberWidth);
+
+            if (y - (itemText.length * lineHeight) < margins.bottom) addNewPage();
+
+            const ascent = lineHeight * 0.8;
+            let lineY = y - ascent;
+
+            // Draw number
+            currentPage.elements.push({ type: 'text', text: number, x: margins.left, y: lineY, fontSize, font: getFontName(element) });
+
+            // Draw item text
+            for (const line of itemText) {
+                currentPage.elements.push({ type: 'text', text: line, x: margins.left + indent, y: lineY, fontSize, font: getFontName(element) });
+                lineY -= lineHeight;
+            }
+            y = lineY;
+        }
     }
   }
   return pages;
@@ -189,14 +264,9 @@ async function performLayout(docDefinition: PDFDocumentDefinition, fonts: any) {
 
 export async function createPdf(docDefinition: PDFDocumentDefinition, options: { output?: 'uint8array' | 'base64' } = {}): Promise<Uint8Array | string> {
   const pdfDoc = await PDFDocument.create();
-  const fonts = {
-    Helvetica: await pdfDoc.embedFont(StandardFonts.Helvetica),
-    HelveticaBold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
-    HelveticaOblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
-    HelveticaBoldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
-  };
+  const fonts = {}; // Initialize empty font cache
 
-  const pagesLayout = await performLayout(docDefinition, fonts);
+  const pagesLayout = await performLayout(docDefinition, pdfDoc, fonts);
   const margins = parseMargins(docDefinition.margin);
 
   const totalPages = pagesLayout.length;
