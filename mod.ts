@@ -102,10 +102,14 @@ async function performLayout(docDefinition: any, font: any) {
           if (cell.verticalAlignment === 'middle') blockY -= freeSpace / 2;
           else if (cell.verticalAlignment === 'bottom') blockY -= freeSpace;
 
+          const fillColor = typeof element.layout?.fillColor === 'function'
+            ? element.layout.fillColor(body.indexOf(row))
+            : element.layout?.fillColor;
+
           currentPage.elements.push({
             type: 'cell',
             x: currentX, y: y - rowHeight, width: cellWidth, height: rowHeight,
-            fillColor: element.layout?.fillColor,
+            fillColor: fillColor,
             borderColor: element.layout?.borderColor,
             borderWidth: element.layout?.borderWidth,
           });
@@ -159,12 +163,20 @@ export async function createPdf(docDefinition: any): Promise<Uint8Array> {
         const image = await pdfDoc.embedPng(imageBytes);
         page.drawImage(image, { x: element.x, y: element.y, width: element.width, height: element.height });
       } else if (element.type === 'cell') {
+        const rectOptions: any = {
+            x: element.x,
+            y: element.y,
+            width: element.width,
+            height: element.height,
+        };
         if (element.fillColor) {
-          page.drawRectangle({ ...element, color: rgb(element.fillColor[0], element.fillColor[1], element.fillColor[2]) });
+            rectOptions.color = rgb(element.fillColor[0], element.fillColor[1], element.fillColor[2]);
         }
         if (element.borderColor) {
-          page.drawRectangle({ ...element, borderColor: rgb(element.borderColor[0], element.borderColor[1], element.borderColor[2]), borderWidth: element.borderWidth || 1 });
+            rectOptions.borderColor = rgb(element.borderColor[0], element.borderColor[1], element.borderColor[2]);
+            rectOptions.borderWidth = element.borderWidth || 1;
         }
+        page.drawRectangle(rectOptions);
       }
     }
 
