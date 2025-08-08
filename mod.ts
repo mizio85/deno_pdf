@@ -84,7 +84,8 @@ async function performLayout(docDefinition: PDFDocumentDefinition, fonts: any) {
 
       if (y - totalHeight < margins.bottom) addNewPage();
 
-      let lineY = y;
+      const ascent = lineHeight * 0.8; // Approximation
+      let lineY = y - ascent;
       for (const line of lines) {
         const lineWidth = font.widthOfTextAtSize(line, fontSize);
         let x = margins.left;

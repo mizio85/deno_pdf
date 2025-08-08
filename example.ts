@@ -43,7 +43,7 @@ for (let i = 1; i <= 15; i++) {
 const docDefinition = {
   pageSize: 'A4',
   pageOrientation: 'portrait',
-  margin: [40, 60, 40, 60], // [left, top, right, bottom]
+  margin: [40, 10, 40, 60], // [left, top, right, bottom] - SMALL TOP MARGIN
   styles: {
     header: {
       fontSize: 24,
