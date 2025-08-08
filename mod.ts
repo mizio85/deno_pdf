@@ -2,21 +2,50 @@ import { PDFDocument, rgb, StandardFonts, PageSizes } from 'https://cdn.skypack.
 export * from './types.ts';
 import { PDFDocumentDefinition, ContentElement } from './types.ts';
 
-async function performLayout(docDefinition: PDFDocumentDefinition, font: any) {
+const parseMargins = (margin: any) => {
+  if (typeof margin === 'number') return { top: margin, bottom: margin, left: margin, right: margin };
+  if (Array.isArray(margin) && margin.length === 4) return { left: margin[0], top: margin[1], right: margin[2], bottom: margin[3] };
+  return { top: 50, bottom: 50, left: 50, right: 50 }; // Default
+};
+
+async function performLayout(docDefinition: PDFDocumentDefinition, fonts: any) {
   const { pageSize = 'A4', pageOrientation = 'portrait', content } = docDefinition;
-  const margin = 50;
+  const margins = parseMargins(docDefinition.margin);
 
   const pageDims = PageSizes[pageSize];
   const [width, height] = pageOrientation === 'landscape' ? [pageDims[1], pageDims[0]] : pageDims;
 
-  let y = height - margin;
+  let y = height - margins.top;
   let currentPage = { elements: [] };
   const pages = [currentPage];
 
   const addNewPage = () => {
     currentPage = { elements: [] };
     pages.push(currentPage);
-    y = height - margin;
+    y = height - margins.top;
+  };
+
+  const resolveStyles = (element: any, styles: any) => {
+    if (!element.style || !styles) return element;
+    const styleNames = Array.isArray(element.style) ? element.style : [element.style];
+    let mergedStyle = {};
+    for (const styleName of styleNames) {
+      if (styles[styleName]) {
+        mergedStyle = { ...mergedStyle, ...styles[styleName] };
+      }
+    }
+    return { ...mergedStyle, ...element };
+  };
+
+  const getFontName = (element: any) => {
+    if (element.bold && element.italics) return 'HelveticaBoldOblique';
+    if (element.bold) return 'HelveticaBold';
+    if (element.italics) return 'HelveticaOblique';
+    return 'Helvetica';
+  };
+
+  const getFont = (element: any, fonts: any) => {
+    return fonts[getFontName(element)];
   };
 
   const wrapText = (text: string, font: any, fontSize: number, maxWidth: number): string[] => {
@@ -38,41 +67,51 @@ async function performLayout(docDefinition: PDFDocumentDefinition, font: any) {
     return lines;
   };
 
-  for (const element of content as ContentElement[]) {
+  for (let element of content as ContentElement[]) {
+    element = resolveStyles(element, docDefinition.styles);
+
+    if (element.margin) {
+        const elementMargins = parseMargins(element.margin);
+        y -= elementMargins.top;
+    }
+
     if ('text' in element) {
+      const font = getFont(element, fonts);
       const fontSize = element.fontSize || 12;
-      const lines = wrapText(element.text, font, fontSize, width - margin * 2);
+      const lines = wrapText(element.text, font, fontSize, width - margins.left - margins.right);
       const lineHeight = font.heightAtSize(fontSize);
       const totalHeight = lines.length * lineHeight;
 
-      if (y - totalHeight < margin) addNewPage();
+      if (y - totalHeight < margins.bottom) addNewPage();
 
       let lineY = y;
       for (const line of lines) {
         const lineWidth = font.widthOfTextAtSize(line, fontSize);
-        let x = margin;
-        if (element.alignment === 'right') x = width - margin - lineWidth;
+        let x = margins.left;
+        if (element.alignment === 'right') x = width - margins.right - lineWidth;
         else if (element.alignment === 'center') x = (width / 2) - (lineWidth / 2);
 
-        currentPage.elements.push({ type: 'text', text: line, x, y: lineY, fontSize, color: element.color });
+        currentPage.elements.push({ type: 'text', text: line, x, y: lineY, fontSize, color: element.color, font: getFontName(element) });
         lineY -= lineHeight;
       }
       y = lineY - 5;
+      if (element.margin) y -= parseMargins(element.margin).bottom;
     } else if ('image' in element) {
       // Image layouting is tricky without knowing dimensions beforehand.
       // For now, we assume a fixed size or fetch it, which is slow.
       // Let's assume a fixed height for layout purposes.
       const imageHeight = element.height || 100; // Placeholder
       const imageWidth = element.width || 150;
-      if (y - imageHeight < margin) addNewPage();
-      currentPage.elements.push({ type: 'image', image: element.image, x: margin, y: y - imageHeight, width: imageWidth, height: imageHeight });
+      if (y - imageHeight < margins.bottom) addNewPage();
+      currentPage.elements.push({ type: 'image', image: element.image, x: margins.left, y: y - imageHeight, width: imageWidth, height: imageHeight });
       y -= imageHeight + 5;
+      if (element.margin) y -= parseMargins(element.margin).bottom;
     } else if ('table' in element) {
       const { table } = element;
       const { body, widths } = table;
       const cellMargin = 5;
       const fontSize = element.fontSize || 12;
-      const availableWidth = width - margin * 2;
+      const availableWidth = width - margins.left - margins.right;
       const numColumns = body[0]?.length || 1;
       let columnWidths: number[];
       if (widths === '*') columnWidths = Array(numColumns).fill(availableWidth / numColumns);
@@ -83,22 +122,23 @@ async function performLayout(docDefinition: PDFDocumentDefinition, font: any) {
         let maxLines = 0;
         const wrappedCells = row.map((cell: any, i: number) => {
           const cellText = typeof cell === 'string' ? cell : cell.text;
-          const lines = wrapText(cellText, font, fontSize, columnWidths[i] - cellMargin * 2);
+          const cellFont = getFont(cell, fonts);
+          const lines = wrapText(cellText, cellFont, fontSize, columnWidths[i] - cellMargin * 2);
           if (lines.length > maxLines) maxLines = lines.length;
-          return { ...cell, lines };
+          return { ...cell, lines, font: cellFont, fontName: getFontName(cell) };
         });
 
-        const lineHeight = font.heightAtSize(fontSize);
+        const lineHeight = fonts.Helvetica.heightAtSize(fontSize); // Base line height on standard font
         const rowHeight = maxLines * lineHeight + cellMargin * 2;
-        if (y - rowHeight < margin) addNewPage();
+        if (y - rowHeight < margins.bottom) addNewPage();
 
-        let currentX = margin;
+        let currentX = margins.left;
         for (let i = 0; i < wrappedCells.length; i++) {
           const cell = wrappedCells[i];
           const cellWidth = columnWidths[i];
           const textHeight = cell.lines.length * lineHeight;
 
-          const ascent = font.heightAtSize(fontSize) * 0.8; // Revert to approximation
+          const ascent = cell.font.heightAtSize(fontSize) * 0.8;
           const freeSpace = rowHeight - textHeight - cellMargin * 2;
           let blockY = y - cellMargin - ascent;
 
@@ -119,11 +159,11 @@ async function performLayout(docDefinition: PDFDocumentDefinition, font: any) {
 
           let lineY = blockY;
           for(const line of cell.lines) {
-            const lineWidth = font.widthOfTextAtSize(line, fontSize);
+            const lineWidth = cell.font.widthOfTextAtSize(line, fontSize);
             let lineX = currentX + cellMargin;
             if (cell.alignment === 'right') lineX = currentX + cellWidth - cellMargin - lineWidth;
             else if (cell.alignment === 'center') lineX = currentX + (cellWidth / 2) - (lineWidth / 2);
-            currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize });
+            currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName });
             lineY -= lineHeight;
           }
           currentX += cellWidth;
@@ -131,6 +171,7 @@ async function performLayout(docDefinition: PDFDocumentDefinition, font: any) {
         y -= rowHeight;
       }
       y -= 10;
+      if (element.margin) y -= parseMargins(element.margin).bottom;
     }
   }
   return pages;
@@ -138,9 +179,15 @@ async function performLayout(docDefinition: PDFDocumentDefinition, font: any) {
 
 export async function createPdf(docDefinition: PDFDocumentDefinition, options: { output?: 'uint8array' | 'base64' } = {}): Promise<Uint8Array | string> {
   const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fonts = {
+    Helvetica: await pdfDoc.embedFont(StandardFonts.Helvetica),
+    HelveticaBold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+    HelveticaOblique: await pdfDoc.embedFont(StandardFonts.HelveticaOblique),
+    HelveticaBoldOblique: await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique),
+  };
 
-  const pagesLayout = await performLayout(docDefinition, font);
+  const pagesLayout = await performLayout(docDefinition, fonts);
+  const margins = parseMargins(docDefinition.margin);
 
   const totalPages = pagesLayout.length;
   for (let i = 0; i < totalPages; i++) {
@@ -154,10 +201,11 @@ export async function createPdf(docDefinition: PDFDocumentDefinition, options: {
 
     for (const element of pageLayout.elements) {
       if (element.type === 'text') {
+        const fontToUse = fonts[element.font || 'Helvetica'];
         page.drawText(element.text, {
           x: element.x,
           y: element.y,
-          font,
+          font: fontToUse,
           size: element.fontSize,
           color: element.color ? rgb(element.color[0], element.color[1], element.color[2]) : rgb(0, 0, 0),
         });
@@ -188,19 +236,19 @@ export async function createPdf(docDefinition: PDFDocumentDefinition, options: {
       let footerText = docDefinition.footer.text || '';
       footerText = footerText.replace('{pageNumber}', pageNumber.toString()).replace('{totalPages}', totalPages.toString());
 
+      const footerFont = fonts.Helvetica; // Default font for footer
       const fontSize = docDefinition.footer.fontSize || 10;
-      const textWidth = font.widthOfTextAtSize(footerText, fontSize);
+      const textWidth = footerFont.widthOfTextAtSize(footerText, fontSize);
       const { width } = page.getSize();
-      const margin = 50;
 
-      let x = margin;
-      if (docDefinition.footer.alignment === 'right') x = width - margin - textWidth;
+      let x = margins.left;
+      if (docDefinition.footer.alignment === 'right') x = width - margins.right - textWidth;
       else if (docDefinition.footer.alignment === 'center') x = width / 2 - textWidth / 2;
 
       page.drawText(footerText, {
         x,
-        y: margin / 2,
-        font,
+        y: margins.bottom / 2,
+        font: footerFont,
         size: fontSize,
         color: docDefinition.footer.color ? rgb(docDefinition.footer.color[0], docDefinition.footer.color[1], docDefinition.footer.color[2]) : rgb(0, 0, 0),
       });
