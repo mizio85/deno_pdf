@@ -22,6 +22,11 @@ If you have hosted this module on a service like GitHub, you can import it direc
 ```typescript
 // Replace with the actual raw URL to your mod.ts file
 import { createPdf } from 'https://deno.land/x/your_module/mod.ts';
+
+const docDefinition = { /* ... */ };
+const pdfDoc = await createPdf(docDefinition);
+const pdfBytes = await pdfDoc.save();
+// now you can save the pdfBytes to a file or send it in a response
 ```
 
 ### Local Import
@@ -30,6 +35,10 @@ If you have the code locally in your project, you can use a relative path.
 
 ```typescript
 import { createPdf } from './path/to/deno-pdf-generator/mod.ts';
+
+const docDefinition = { /* ... */ };
+const pdfDoc = await createPdf(docDefinition);
+const pdfBytes = await pdfDoc.save();
 ```
 
 ## Example Usage
@@ -124,7 +133,8 @@ const docDefinition = {
 };
 
 async function generate() {
-  const pdfBytes = await createPdf(docDefinition);
+  const pdfDoc = await createPdf(docDefinition);
+  const pdfBytes = await pdfDoc.save();
   await Deno.writeFile('showcase-example.pdf', pdfBytes);
   console.log('Showcase PDF generated successfully!');
 }

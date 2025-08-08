@@ -133,7 +133,7 @@ async function performLayout(docDefinition: any, font: any) {
   return pages;
 }
 
-export async function createPdf(docDefinition: any): Promise<Uint8Array> {
+export async function createPdf(docDefinition: any): Promise<PDFDocument> {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
@@ -204,5 +204,5 @@ export async function createPdf(docDefinition: any): Promise<Uint8Array> {
     }
   }
 
-  return await pdfDoc.save();
+  return pdfDoc;
 }

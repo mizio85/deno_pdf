@@ -85,7 +85,8 @@ const docDefinition = {
 };
 
 async function generate() {
-  const pdfBytes = await createPdf(docDefinition);
+  const pdfDoc = await createPdf(docDefinition);
+  const pdfBytes = await pdfDoc.save();
   await Deno.writeFile('showcase-example.pdf', pdfBytes);
   console.log('Showcase PDF generated successfully!');
 }
