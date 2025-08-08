@@ -10,7 +10,36 @@ This is a simple PDF generator for Deno, inspired by `pdfmake`. It uses `pdf-lib
 - Flexible table layouts with dynamic column widths and row heights.
 - Customizable table styling (fill color, borders).
 
-## Usage
+## Using as a Module
+
+To use this PDF generator in your own Deno project, you can import the `createPdf` function from the `mod.ts` file.
+
+### Remote Import (from a URL)
+
+If you have hosted this module on a service like GitHub, you can import it directly via its raw URL.
+
+```typescript
+// Replace with the actual raw URL to your mod.ts file
+import { createPdf } from 'https://deno.land/x/your_module/mod.ts';
+
+const docDefinition = { /* ... */ };
+const pdfBytes = await createPdf(docDefinition);
+```
+
+### Local Import
+
+If you have the code locally in your project, you can use a relative path.
+
+```typescript
+import { createPdf } from './path/to/deno-pdf-generator/mod.ts';
+
+const docDefinition = { /* ... */ };
+const pdfBytes = await createPdf(docDefinition);
+```
+
+## Example Usage
+
+Here is an example of how to create a document:
 
 ```typescript
 import { createPdf } from './mod.ts';
