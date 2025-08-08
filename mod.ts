@@ -300,14 +300,31 @@ export async function createPdf(docDefinition: PDFDocumentDefinition, options: {
             width: element.width,
             height: element.height,
         };
+
+        let shouldDraw = false;
+
         if (element.fillColor) {
             rectOptions.color = rgb(element.fillColor[0], element.fillColor[1], element.fillColor[2]);
+            shouldDraw = true;
         }
+
         if (element.borderColor) {
             rectOptions.borderColor = rgb(element.borderColor[0], element.borderColor[1], element.borderColor[2]);
             rectOptions.borderWidth = element.borderWidth || 1;
+            shouldDraw = true;
+
+            if (!element.fillColor) {
+                // If there is a border but no fill color, we need to make the fill transparent.
+                // We do this by setting the overall opacity to 0, which affects the fill,
+                // and then setting the border opacity back to 1.
+                rectOptions.opacity = 0;
+                rectOptions.borderOpacity = 1;
+            }
         }
-        page.drawRectangle(rectOptions);
+
+        if (shouldDraw) {
+            page.drawRectangle(rectOptions);
+        }
       }
     }
 
