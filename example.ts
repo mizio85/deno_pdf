@@ -1,48 +1,45 @@
 import { createPdf } from './mod.ts';
 
+const longContent = [];
+for (let i = 0; i < 20; i++) {
+  longContent.push({
+    text: `This is a long paragraph (number ${i + 1}) to ensure that the document spans multiple pages. The footer should be replicated on every page, and the page numbers should update correctly. The quick brown fox jumps over the lazy dog.`,
+    fontSize: 12,
+  });
+  longContent.push({
+    table: {
+      widths: ['*', '*'],
+      body: [
+        [`Table on page...`, `...after paragraph ${i + 1}`],
+        ['Cell 1', 'Cell 2'],
+      ]
+    }
+  });
+}
+
 const docDefinition = {
   pageSize: 'A4',
   pageOrientation: 'portrait',
+  footer: {
+    text: 'Page {pageNumber} of {totalPages}',
+    alignment: 'center',
+    fontSize: 10,
+    color: [0.5, 0.5, 0.5],
+  },
   content: [
     {
-      text: 'Vertical Alignment Test',
+      text: 'Document with a Multi-Page Footer',
       fontSize: 24,
       alignment: 'center',
     },
-    {
-      table: {
-        widths: ['*', '*', '*'],
-        body: [
-          [
-            { text: 'Top', alignment: 'center' },
-            { text: 'Middle', alignment: 'center' },
-            { text: 'Bottom', alignment: 'center' },
-          ],
-          [
-            { text: 'This text is top-aligned.', alignment: 'center', verticalAlignment: 'top' },
-            { text: 'This text is middle-aligned.', alignment: 'center', verticalAlignment: 'middle' },
-            { text: 'This text is bottom-aligned.', alignment: 'center', verticalAlignment: 'bottom' },
-          ],
-          [
-            { text: 'This cell has a lot more text to demonstrate the vertical alignment with multi-line content. This should be top-aligned.', alignment: 'center', verticalAlignment: 'top' },
-            { text: 'This cell has a lot more text to demonstrate the vertical alignment with multi-line content. This should be middle-aligned.', alignment: 'center', verticalAlignment: 'middle' },
-            { text: 'This cell has a lot more text to demonstrate the vertical alignment with multi-line content. This should be bottom-aligned.', alignment: 'center', verticalAlignment: 'bottom' },
-          ],
-        ],
-      },
-      fontSize: 12,
-      layout: {
-        borderColor: [0.8, 0.8, 0.8],
-        borderWidth: 0.5,
-      }
-    },
+    ...longContent,
   ],
 };
 
 async function generate() {
   const pdfBytes = await createPdf(docDefinition);
   await Deno.writeFile('example.pdf', pdfBytes);
-  console.log('Vertical alignment test PDF generated successfully!');
+  console.log('PDF with footer generated successfully!');
 }
 
 generate();

@@ -93,6 +93,22 @@ deno run --allow-net --allow-write --allow-import example.ts
 - `pageSize`: (Optional) 'A4' or 'Letter'. Defaults to 'A4'.
 - `pageOrientation`: (Optional) 'portrait' or 'landscape'. Defaults to 'portrait'.
 
+### Footer
+
+You can add a footer that will be replicated on every page by adding a `footer` property to the document definition.
+
+```json
+{
+  "footer": {
+    "text": "Page {pageNumber} of {totalPages} - My Document",
+    "alignment": "center",
+    "fontSize": 10,
+    "color": [0.5, 0.5, 0.5]
+  }
+}
+```
+The footer text supports `{pageNumber}` and `{totalPages}` placeholders.
+
 ### Content Elements
 
 The `content` property is an array of elements.
