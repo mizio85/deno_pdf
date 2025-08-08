@@ -10,6 +10,8 @@ To use this generator, import the `createPdf` function from `mod.ts` and pass a 
 import { createPdf } from './mod.ts';
 
 const docDefinition = {
+  pageSize: 'A4',
+  pageOrientation: 'landscape',
   content: [
     {
       text: 'Hello from Deno PDF Generator!',
@@ -17,17 +19,23 @@ const docDefinition = {
       color: [0.2, 0.5, 0.8], // RGB values between 0 and 1
     },
     {
-      image: 'https://deno.land/logo.svg', // URL to a PNG image
+      image: 'https://placehold.co/100x100.png', // URL to a PNG image
     },
     {
       table: {
+        widths: '*', // Use '*' for full-width, auto-sized columns
         body: [
-          ['Column 1', 'Column 2', 'Column 3'],
+          ['Header 1', 'Header 2', 'Header 3'],
           ['One', 'Two', 'Three'],
           ['Four', 'Five', 'Six'],
         ],
       },
-      fontSize: 14,
+      fontSize: 12,
+      layout: {
+        fillColor: [0.9, 0.9, 0.9],
+        borderColor: [0.5, 0.5, 0.5],
+        borderWidth: 0.5,
+      }
     },
   ],
 };
@@ -44,16 +52,25 @@ generate();
 Then, run the script using Deno:
 
 ```bash
-deno run --allow-net --allow-write example.ts
+deno run --allow-net --allow-write --allow-import example.ts
 ```
 
 This will create a file named `example.pdf` in the same directory.
 
 ## Document Definition Structure
 
-The document definition is a JavaScript object with a `content` property, which is an array of elements. Each element is an object that defines a part of the PDF.
+The document definition is a JavaScript object with the following properties:
 
-### Text
+### Page Setup
+
+- `pageSize`: (Optional) The size of the page. Can be any of the sizes from `pdf-lib`'s `PageSizes` (e.g., 'A4', 'Letter'). Defaults to 'A4'.
+- `pageOrientation`: (Optional) The orientation of the page. Can be 'portrait' or 'landscape'. Defaults to 'portrait'.
+
+### Content
+
+The `content` property is an array of elements. Each element is an object that defines a part of the PDF.
+
+#### Text
 
 ```json
 {
@@ -63,7 +80,7 @@ The document definition is a JavaScript object with a `content` property, which 
 }
 ```
 
-### Images
+#### Images
 
 ```json
 {
@@ -72,17 +89,32 @@ The document definition is a JavaScript object with a `content` property, which 
 ```
 **Note:** Currently, only PNG images from a URL are supported.
 
-### Tables
+#### Tables
 
 ```json
 {
   "table": {
+    "widths": ["*", 100], // Can be '*', an array of numbers, or a mix
     "body": [
       ["Row 1, Col 1", "Row 1, Col 2"],
       ["Row 2, Col 1", "Row 2, Col 2"]
     ]
   },
-  "fontSize": 12
+  "fontSize": 12,
+  "layout": {
+    "fillColor": [0.9, 0.9, 0.9],
+    "borderColor": [0, 0, 0],
+    "borderWidth": 1
+  }
 }
 ```
-**Note:** Tables are very basic and have fixed column widths.
+**Table Properties:**
+- `widths`: Defines the width of each column.
+  - `*`: Distributes the available width equally among all `*` columns.
+  - `number`: A fixed width in points.
+- `body`: A 2D array of strings representing the table content.
+
+**Layout Properties:**
+- `fillColor`: An RGB array (e.g., `[0.9, 0.9, 0.9]`) for the cell background color.
+- `borderColor`: An RGB array for the cell border color.
+- `borderWidth`: The width of the cell borders.
