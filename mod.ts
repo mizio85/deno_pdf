@@ -137,15 +137,18 @@ export async function createPdf(docDefinition: any): Promise<Uint8Array> {
             });
           }
 
-          let lineY;
+          // Pragmatic approximation for ascent, as direct metrics are unavailable.
+          const ascent = lineHeight * 0.8;
+          const freeSpace = rowHeight - textHeight - cellMargin * 2;
+          let blockY = y - cellMargin - ascent;
+
           if (verticalAlignment === 'middle') {
-            lineY = y - (rowHeight / 2) + (textHeight / 2) - cellMargin;
+            blockY -= freeSpace / 2;
           } else if (verticalAlignment === 'bottom') {
-            lineY = y - rowHeight + textHeight;
-          } else { // top
-            lineY = y - cellMargin;
+            blockY -= freeSpace;
           }
 
+          let lineY = blockY;
           for (const line of lines) {
             const lineWidth = font.widthOfTextAtSize(line, fontSize);
             let lineX = x + cellMargin;
