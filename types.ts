@@ -21,8 +21,13 @@ export interface ImageElement {
 
 export type TableCell = string | {
   text: string;
+  style?: string | string[];
+  font?: StandardFont;
+  bold?: boolean;
+  italics?: boolean;
   alignment?: Alignment;
   verticalAlignment?: VerticalAlignment;
+  color?: Color;
 };
 
 export interface TableLayout {
@@ -35,7 +40,7 @@ export interface TableElement {
   style?: string | string[];
   pageBreak?: 'before';
   table: {
-    widths: ('*' | number)[] | '*';
+    widths: ('*' | number | 'auto')[] | '*';
     body: TableCell[][];
   };
   fontSize?: number;

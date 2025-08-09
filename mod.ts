@@ -136,24 +136,63 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
       const availableWidth = width - margins.left - margins.right;
       const numColumns = body[0]?.length || 1;
       let columnWidths: number[];
-      if (widths === '*') columnWidths = Array(numColumns).fill(availableWidth / numColumns);
-      else if (Array.isArray(widths)) columnWidths = widths.map(w => w === '*' ? availableWidth / numColumns : w);
-      else columnWidths = Array(numColumns).fill(100);
+
+      if (widths === '*') {
+        columnWidths = Array(numColumns).fill(availableWidth / numColumns);
+      } else if (Array.isArray(widths)) {
+        // Pre-calculate widths for 'auto' columns by measuring their content
+        const measuredWidths = await Promise.all(widths.map(async (w, i) => {
+          if (w !== 'auto') return w; // Pass through numbers and '*'
+
+          let maxWidth = 0;
+          for (const row of body) {
+            const cell = row[i];
+            if (!cell) continue;
+
+            const isObjectCell = typeof cell === 'object' && cell !== null;
+            const cellText = isObjectCell ? String(cell.text) : String(cell);
+            const cellElement = resolveStyles(isObjectCell ? cell : { text: cellText }, docDefinition.styles);
+            const cellFont = await getFont(cellElement, fonts, pdfDoc);
+
+            const textWidth = cellFont.widthOfTextAtSize(cellText, fontSize);
+            if (textWidth > maxWidth) {
+              maxWidth = textWidth;
+            }
+          }
+          return maxWidth + cellMargin * 2; // Add horizontal padding
+        }));
+
+        // Distribute remaining width to '*' columns
+        const fixedWidth = measuredWidths
+            .filter((w): w is number => typeof w === 'number')
+            .reduce((a, b) => a + b, 0);
+
+        const starColumnsCount = measuredWidths.filter(w => w === '*').length;
+        const remainingWidth = availableWidth - fixedWidth;
+        const starWidth = starColumnsCount > 0 ? remainingWidth / starColumnsCount : 0;
+
+        columnWidths = measuredWidths.map(w => (w === '*' ? starWidth : w as number));
+      } else {
+        columnWidths = Array(numColumns).fill(100); // Default fallback
+      }
 
       for (const row of body) {
         let maxLines = 0;
         const wrappedCells = [];
         for (const [i, cell] of row.entries()) {
             const isObjectCell = typeof cell === 'object' && cell !== null;
-            const cellText = isObjectCell ? cell.text : cell;
-            const cellElement = isObjectCell ? cell : {}; // Use empty object for non-object cells to avoid errors
+            const cellText = isObjectCell ? String(cell.text) : String(cell);
+
+            // Resolve styles for the cell
+            const baseCellElement = isObjectCell ? cell : { text: cellText };
+            const cellElement = resolveStyles(baseCellElement, docDefinition.styles);
 
             const cellFont = await getFont(cellElement, fonts, pdfDoc);
             const lines = wrapText(cellText, cellFont, fontSize, columnWidths[i] - cellMargin * 2);
             if (lines.length > maxLines) maxLines = lines.length;
 
             wrappedCells.push({
-                ...(isObjectCell ? cell : { text: cellText }),
+                ...cellElement, // Use the fully styled cell element
                 lines,
                 font: cellFont,
                 fontName: getFontName(cellElement)
@@ -195,7 +234,7 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
             let lineX = currentX + cellMargin;
             if (cell.alignment === 'right') lineX = currentX + cellWidth - cellMargin - lineWidth;
             else if (cell.alignment === 'center') lineX = currentX + (cellWidth / 2) - (lineWidth / 2);
-            currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName });
+            currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName, color: cell.color });
             lineY -= lineHeight;
           }
           currentX += cellWidth;
