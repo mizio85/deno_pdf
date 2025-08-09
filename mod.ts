@@ -63,32 +63,46 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
   const wrapText = (text: any, font: any, fontSize: number, maxWidth: number): string[] => {
     const textAsString = String(text ?? '');
     if (!textAsString) return [];
-    const allLines: string[] = [];
+
+    const lines: string[] = [];
     const paragraphs = textAsString.split('\n');
+
     for (const paragraph of paragraphs) {
-        if (paragraph.trim() === '' && allLines.length > 0) {
-            allLines.push('');
+        if (paragraph === '') {
+            lines.push('');
             continue;
         }
-        const words = paragraph.split(' ').filter(w => w.length > 0);
-        if (words.length === 0) {
-            if (paragraph === '') allLines.push('');
-            continue;
-        }
+
+        const words = paragraph.split(' ');
         let currentLine = '';
+
         for (const word of words) {
+            if (!word) continue;
+
             const testLine = currentLine === '' ? word : `${currentLine} ${word}`;
-            const width = font.widthOfTextAtSize(testLine, fontSize);
-            if (width < maxWidth) {
+            const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+
+            if (testWidth <= maxWidth) {
                 currentLine = testLine;
             } else {
-                allLines.push(currentLine);
-                currentLine = word;
+                if (currentLine !== '') {
+                    lines.push(currentLine);
+                }
+
+                const wordWidth = font.widthOfTextAtSize(word, fontSize);
+                if (wordWidth > maxWidth) {
+                    lines.push(word);
+                    currentLine = '';
+                } else {
+                    currentLine = word;
+                }
             }
         }
-        allLines.push(currentLine);
+        if (currentLine !== '') {
+            lines.push(currentLine);
+        }
     }
-    return allLines;
+    return lines;
   };
 
   for (const [i, initialElement] of (content as ContentElement[]).entries()) {
