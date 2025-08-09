@@ -93,6 +93,7 @@ export interface Style {
     bold?: boolean;
     italics?: boolean;
     alignment?: Alignment;
+    verticalAlignment?: VerticalAlignment;
     color?: Color;
     margin?: number | [number, number, number, number];
     pageBreak?: 'before';

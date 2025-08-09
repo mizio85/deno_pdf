@@ -61,6 +61,9 @@ const docDefinition: PDFDocumentDefinition = {
     times: {
         font: 'Times-Roman',
         italics: true,
+    },
+    vmiddle: {
+      verticalAlignment: 'middle'
     }
   },
   footer: {
@@ -166,17 +169,21 @@ const docDefinition: PDFDocumentDefinition = {
       }
     },
     {
-        text: 'Vertical Alignment Test',
+        text: 'Vertical Alignment Test (via Styles)',
         style: 'subheader',
     },
     {
+      style: 'vmiddle', // Apply the new style to the whole table
       table: {
         widths: ['*', '*', '*'],
         body: [
             [
-                {text: 'Top-aligned text in a tall cell.', verticalAlignment: 'top'},
-                {text: 'Middle-aligned text in a tall cell.\n\nThis text has multiple lines.', verticalAlignment: 'middle'},
-                {text: 'Bottom-aligned text in a tall cell.', verticalAlignment: 'bottom'},
+                // This cell should be middle-aligned by the table's style
+                'This text has multiple lines\n\nand should be vertically centered by the style.',
+                // This cell overrides the style to be top-aligned
+                {text: 'This cell overrides the style to be top-aligned.', verticalAlignment: 'top'},
+                // This cell also inherits the middle-alignment from the table style
+                'This cell is also middle-aligned and has a lot of text that will wrap around to multiple lines just to make the row extra tall.',
             ]
         ]
       },
@@ -189,7 +196,7 @@ const docDefinition: PDFDocumentDefinition = {
 };
 
 async function generate() {
-  const pdfBytes = await createPdf(docDefinition);
+  const pdfBytes = await createPdf(docDefinition, { debug: { showTextBounds: true } });
   await Deno.writeFile('showcase-example.pdf', pdfBytes as Uint8Array);
   console.log('Showcase PDF generated successfully!');
 }

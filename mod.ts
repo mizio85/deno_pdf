@@ -28,17 +28,13 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
   const resolveStyles = (element: any, styles: any) => {
     if (!element.style || !styles) return element;
     const styleNames = Array.isArray(element.style) ? element.style : [element.style];
-
     let finalStyle = { ...element };
-
-    for (const styleName of styleNames.reverse()) { // Apply styles from right to left
+    for (const styleName of styleNames.reverse()) {
       const style = styles[styleName];
       if (style) {
         const mergedTable = { ...(style.table || {}), ...(finalStyle.table || {}) };
         const mergedLayout = { ...(style.layout || {}), ...(finalStyle.layout || {}) };
-
         finalStyle = { ...style, ...finalStyle };
-
         if (Object.keys(mergedTable).length > 0) finalStyle.table = mergedTable;
         if (Object.keys(mergedLayout).length > 0) finalStyle.layout = mergedLayout;
       }
@@ -67,10 +63,8 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
   const wrapText = (text: any, font: any, fontSize: number, maxWidth: number): string[] => {
     const textAsString = String(text ?? '');
     if (!textAsString) return [];
-
     const allLines: string[] = [];
     const paragraphs = textAsString.split('\n');
-
     for (const paragraph of paragraphs) {
         if (paragraph.trim() === '' && allLines.length > 0) {
             allLines.push('');
@@ -78,6 +72,7 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
         }
         const words = paragraph.split(' ').filter(w => w.length > 0);
         if (words.length === 0) {
+            if (paragraph === '') allLines.push('');
             continue;
         }
         let currentLine = '';
@@ -98,14 +93,11 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
 
   for (const [i, initialElement] of (content as ContentElement[]).entries()) {
     const element = resolveStyles(initialElement, docDefinition.styles);
-
     if (element.pageBreak === 'before' && i > 0) {
         addNewPage();
     }
-
     if (element.margin) {
-        const elementMargins = parseMargins(element.margin);
-        y -= elementMargins.top;
+        y -= parseMargins(element.margin).top;
     }
 
     if ('text' in element) {
@@ -113,33 +105,27 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
       const fontSize = element.fontSize || 12;
       const lines = wrapText(element.text, font, fontSize, width - margins.left - margins.right);
       const lineHeight = font.heightAtSize(fontSize);
-      const totalHeight = lines.length * lineHeight;
+      if (y - (lines.length * lineHeight) < margins.bottom) addNewPage();
 
-      if (y - totalHeight < margins.bottom) addNewPage();
-
-      const ascent = lineHeight * 0.8; // Approximation
+      const ascent = font.heightAtSize(fontSize, { descent: false });
+      const descent = font.heightAtSize(fontSize) - ascent;
       let lineY = y - ascent;
+
       for (const line of lines) {
         const lineWidth = font.widthOfTextAtSize(line, fontSize);
         let x = margins.left;
         if (element.alignment === 'right') x = width - margins.right - lineWidth;
         else if (element.alignment === 'center') x = (width / 2) - (lineWidth / 2);
-
-        currentPage.elements.push({ type: 'text', text: line, x, y: lineY, fontSize, color: element.color, font: getFontName(element) });
+        currentPage.elements.push({ type: 'text', text: line, x, y: lineY, fontSize, color: element.color, font: getFontName(element), width: lineWidth, ascent, descent });
         lineY -= lineHeight;
       }
-      y = lineY - 5;
-      if (element.margin) y -= parseMargins(element.margin).bottom;
+      y = lineY;
     } else if ('image' in element) {
-      // Image layouting is tricky without knowing dimensions beforehand.
-      // For now, we assume a fixed size or fetch it, which is slow.
-      // Let's assume a fixed height for layout purposes.
-      const imageHeight = element.height || 100; // Placeholder
+      const imageHeight = element.height || 100;
       const imageWidth = element.width || 150;
       if (y - imageHeight < margins.bottom) addNewPage();
       currentPage.elements.push({ type: 'image', image: element.image, x: margins.left, y: y - imageHeight, width: imageWidth, height: imageHeight });
-      y -= imageHeight + 5;
-      if (element.margin) y -= parseMargins(element.margin).bottom;
+      y -= (imageHeight + (element.margin ? parseMargins(element.margin).bottom : 0));
     } else if ('table' in element) {
       const { table } = element;
       const { body, widths } = table;
@@ -152,40 +138,28 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
       if (widths === '*') {
         columnWidths = Array(numColumns).fill(availableWidth / numColumns);
       } else if (Array.isArray(widths)) {
-        // Pre-calculate widths for 'auto' columns by measuring their content
         const measuredWidths = await Promise.all(widths.map(async (w, i) => {
-          if (w !== 'auto') return w; // Pass through numbers and '*'
-
+          if (w !== 'auto') return w;
           let maxWidth = 0;
           for (const row of body) {
             const cell = row[i];
             if (!cell) continue;
-
             const isObjectCell = typeof cell === 'object' && cell !== null;
             const cellText = isObjectCell ? String(cell.text) : String(cell);
             const cellElement = resolveStyles(isObjectCell ? cell : { text: cellText }, docDefinition.styles);
             const cellFont = await getFont(cellElement, fonts, pdfDoc);
-
             const textWidth = cellFont.widthOfTextAtSize(cellText, fontSize);
-            if (textWidth > maxWidth) {
-              maxWidth = textWidth;
-            }
+            if (textWidth > maxWidth) maxWidth = textWidth;
           }
-          return maxWidth + cellMargin * 2; // Add horizontal padding
+          return maxWidth + cellMargin * 2;
         }));
-
-        // Distribute remaining width to '*' columns
-        const fixedWidth = measuredWidths
-            .filter((w): w is number => typeof w === 'number')
-            .reduce((a, b) => a + b, 0);
-
+        const fixedWidth = measuredWidths.filter((w): w is number => typeof w === 'number').reduce((a, b) => a + b, 0);
         const starColumnsCount = measuredWidths.filter(w => w === '*').length;
         const remainingWidth = availableWidth - fixedWidth;
         const starWidth = starColumnsCount > 0 ? remainingWidth / starColumnsCount : 0;
-
         columnWidths = measuredWidths.map(w => (w === '*' ? starWidth : w as number));
       } else {
-        columnWidths = Array(numColumns).fill(100); // Default fallback
+        columnWidths = Array(numColumns).fill(100);
       }
 
       const headerRowsCount = table.headerRows || 0;
@@ -209,32 +183,23 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
             const cellWidth = columnWidths.slice(i, i + colSpan).reduce((a, b) => a + b, 0);
             const cellFont = await getFont(cellElement, fonts, pdfDoc);
             const lines = wrapText(cellText, cellFont, fontSize, cellWidth - cellMargin * 2);
-
             const cellLineHeight = cellFont.heightAtSize(fontSize);
             const cellTextHeight = lines.length * cellLineHeight;
             const totalCellHeight = cellTextHeight + cellMargin * 2;
-            if (totalCellHeight > maxRowHeight) {
-                maxRowHeight = totalCellHeight;
-            }
-
+            if (totalCellHeight > maxRowHeight) maxRowHeight = totalCellHeight;
             wrappedCells.push({ ...cellElement, lines, font: cellFont, fontName: getFontName(cellElement), cellWidth, lineHeight: cellLineHeight });
             if (colSpan > 1) {
                 for (let j = 1; j < colSpan; j++) { wrappedCells.push(null); }
                 i += colSpan - 1;
             }
         }
-
         const rowHeight = maxRowHeight;
-
-        if (y - rowHeight < margins.bottom) {
+        if (y - rowHeight < margins.bottom && !isHeader) {
             addNewPage();
-            if (!isHeader) {
-                for (const [headerIndex, headerRow] of headerRows.entries()) {
-                    await drawRow(headerRow, headerIndex, true);
-                }
+            for (const [headerIndex, headerRow] of headerRows.entries()) {
+                await drawRow(headerRow, headerIndex, true);
             }
         }
-
         let currentX = margins.left;
         for (let i = 0; i < wrappedCells.length; i++) {
             const cell = wrappedCells[i];
@@ -246,101 +211,70 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
             const ascent = cell.font.heightAtSize(fontSize, { descent: false });
             const freeSpace = rowHeight - textHeight - cellMargin * 2;
             let blockY = y - cellMargin - ascent;
-
-            if (cell.verticalAlignment === 'middle') {
-                blockY -= freeSpace / 2;
-            } else if (cell.verticalAlignment === 'bottom') {
-                blockY -= freeSpace;
-            }
+            if (cell.verticalAlignment === 'middle') blockY -= freeSpace / 2;
+            else if (cell.verticalAlignment === 'bottom') blockY -= freeSpace;
             const fillColor = typeof element.layout?.fillColor === 'function' ? element.layout.fillColor(rowIndex) : element.layout?.fillColor;
             currentPage.elements.push({ type: 'cell', x: currentX, y: y - rowHeight, width: cell.cellWidth, height: rowHeight, fillColor, borderColor: element.layout?.borderColor, borderWidth: element.layout?.borderWidth });
             let lineY = blockY;
+            const descent = cell.font.heightAtSize(fontSize) - ascent;
             for (const line of cell.lines) {
                 const lineWidth = cell.font.widthOfTextAtSize(line, fontSize);
                 let lineX = currentX + cellMargin;
                 if (cell.alignment === 'right') lineX = currentX + cell.cellWidth - cellMargin - lineWidth;
                 else if (cell.alignment === 'center') lineX = currentX + (cell.cellWidth / 2) - (lineWidth / 2);
-                currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName, color: cell.color });
+                currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName, color: cell.color, width: lineWidth, ascent, descent });
                 lineY -= cell.lineHeight;
             }
             currentX += cell.cellWidth;
         }
         y -= rowHeight;
       };
-
       for (const [headerIndex, headerRow] of headerRows.entries()) {
         await drawRow(headerRow, headerIndex, true);
       }
       for (const [bodyIndex, bodyRow] of bodyRows.entries()) {
         await drawRow(bodyRow, headerRowsCount + bodyIndex, false);
       }
-      y -= 10;
-      if (element.margin) y -= parseMargins(element.margin).bottom;
-    } else if ('ul' in element) {
-        const font = await getFont(element, fonts, pdfDoc); // Lists can have styles
-        const fontSize = element.fontSize || 12;
-        const lineHeight = font.heightAtSize(fontSize);
-        const indent = 20;
-
-        for (const item of element.ul) {
-            const bullet = '•';
-            const bulletWidth = font.widthOfTextAtSize(bullet, fontSize);
-            const itemText = wrapText(item, font, fontSize, width - margins.left - margins.right - indent);
-
-            if (y - (itemText.length * lineHeight) < margins.bottom) addNewPage();
-
-            const ascent = lineHeight * 0.8;
-            let lineY = y - ascent;
-
-            // Draw bullet
-            currentPage.elements.push({ type: 'text', text: bullet, x: margins.left, y: lineY, fontSize, font: getFontName(element) });
-
-            // Draw item text
-            for (const line of itemText) {
-                currentPage.elements.push({ type: 'text', text: line, x: margins.left + indent, y: lineY, fontSize, font: getFontName(element) });
-                lineY -= lineHeight;
-            }
-            y = lineY;
-        }
-    } else if ('ol' in element) {
+    } else if ('ul' in element || 'ol' in element) {
+        const isOrdered = 'ol' in element;
+        const items = isOrdered ? element.ol : element.ul;
         const font = await getFont(element, fonts, pdfDoc);
         const fontSize = element.fontSize || 12;
         const lineHeight = font.heightAtSize(fontSize);
         const indent = 20;
+        const ascent = font.heightAtSize(fontSize, { descent: false });
+        const descent = font.heightAtSize(fontSize) - ascent;
         let counter = 1;
-
-        for (const item of element.ol) {
-            const number = `${counter++}.`;
-            const numberWidth = font.widthOfTextAtSize(number, fontSize);
-            const itemText = wrapText(item, font, fontSize, width - margins.left - margins.right - indent - numberWidth);
-
+        for (const item of items) {
+            const bullet = isOrdered ? `${counter++}.` : '•';
+            const bulletWidth = font.widthOfTextAtSize(bullet, fontSize);
+            const itemText = wrapText(item, font, fontSize, width - margins.left - margins.right - indent - bulletWidth);
             if (y - (itemText.length * lineHeight) < margins.bottom) addNewPage();
-
-            const ascent = lineHeight * 0.8;
             let lineY = y - ascent;
-
-            // Draw number
-            currentPage.elements.push({ type: 'text', text: number, x: margins.left, y: lineY, fontSize, font: getFontName(element) });
-
-            // Draw item text
+            const firstLine = itemText.shift() || '';
+            const firstLineWidth = font.widthOfTextAtSize(firstLine, fontSize);
+            currentPage.elements.push({ type: 'text', text: bullet, x: margins.left, y: lineY, fontSize, font: getFontName(element), width: bulletWidth, ascent, descent });
+            currentPage.elements.push({ type: 'text', text: firstLine, x: margins.left + indent, y: lineY, fontSize, font: getFontName(element), width: firstLineWidth, ascent, descent });
             for (const line of itemText) {
-                currentPage.elements.push({ type: 'text', text: line, x: margins.left + indent, y: lineY, fontSize, font: getFontName(element) });
                 lineY -= lineHeight;
+                const lineWidth = font.widthOfTextAtSize(line, fontSize);
+                currentPage.elements.push({ type: 'text', text: line, x: margins.left + indent, y: lineY, fontSize, font: getFontName(element), width: lineWidth, ascent, descent });
             }
-            y = lineY;
+            y -= (itemText.length + 1) * lineHeight;
         }
+    }
+     if (element.margin) {
+        y -= parseMargins(element.margin).bottom;
     }
   }
   return pages;
 }
 
-export async function createPdf(docDefinition: PDFDocumentDefinition, options: { output?: 'uint8array' | 'base64' } = {}): Promise<Uint8Array | string> {
+export async function createPdf(docDefinition: PDFDocumentDefinition, options: { output?: 'uint8array' | 'base64', debug?: { showTextBounds?: boolean } } = {}): Promise<Uint8Array | string> {
   const pdfDoc = await PDFDocument.create();
-  const fonts = {}; // Initialize empty font cache
-
+  const fonts = {};
   const pagesLayout = await performLayout(docDefinition, pdfDoc, fonts);
   const margins = parseMargins(docDefinition.margin);
-
   const totalPages = pagesLayout.length;
   for (let i = 0; i < totalPages; i++) {
     const pageLayout = pagesLayout[i];
@@ -350,80 +284,52 @@ export async function createPdf(docDefinition: PDFDocumentDefinition, options: {
       const { width, height } = page.getSize();
       page.setSize(height, width);
     }
-
     for (const element of pageLayout.elements) {
       if (element.type === 'text') {
         const fontToUse = fonts[element.font || 'Helvetica'];
-        page.drawText(element.text, {
-          x: element.x,
-          y: element.y,
-          font: fontToUse,
-          size: element.fontSize,
-          color: element.color ? rgb(element.color[0], element.color[1], element.color[2]) : rgb(0, 0, 0),
-        });
+        page.drawText(element.text, { x: element.x, y: element.y, font: fontToUse, size: element.fontSize, color: element.color ? rgb(element.color[0], element.color[1], element.color[2]) : rgb(0, 0, 0) });
+        if (options.debug?.showTextBounds) {
+            page.drawRectangle({ x: element.x, y: element.y - element.descent, width: element.width, height: element.ascent + element.descent, borderColor: rgb(1, 0, 0), borderWidth: 0.5, opacity: 0 });
+        }
       } else if (element.type === 'image') {
         const imageBytes = await fetch(element.image).then((res) => res.arrayBuffer());
         const image = await pdfDoc.embedPng(imageBytes);
         page.drawImage(image, { x: element.x, y: element.y, width: element.width, height: element.height });
       } else if (element.type === 'cell') {
-        const rectOptions: any = {
-            x: element.x,
-            y: element.y,
-            width: element.width,
-            height: element.height,
-        };
-
+        const rectOptions: any = { x: element.x, y: element.y, width: element.width, height: element.height };
         let shouldDraw = false;
-
         if (element.fillColor) {
             rectOptions.color = rgb(element.fillColor[0], element.fillColor[1], element.fillColor[2]);
             shouldDraw = true;
         }
-
         if (element.borderColor) {
             rectOptions.borderColor = rgb(element.borderColor[0], element.borderColor[1], element.borderColor[2]);
             rectOptions.borderWidth = element.borderWidth || 1;
             shouldDraw = true;
-
             if (!element.fillColor) {
-                // If there is a border but no fill color, we need to make the fill transparent.
-                // We do this by setting the overall opacity to 0, which affects the fill,
-                // and then setting the border opacity back to 1.
                 rectOptions.opacity = 0;
                 rectOptions.borderOpacity = 1;
             }
         }
-
         if (shouldDraw) {
             page.drawRectangle(rectOptions);
         }
       }
     }
-
     if (docDefinition.footer) {
       const pageNumber = i + 1;
       let footerText = docDefinition.footer.text || '';
       footerText = footerText.replace('{pageNumber}', pageNumber.toString()).replace('{totalPages}', totalPages.toString());
-
-      const footerFont = fonts.Helvetica; // Default font for footer
+      const footerFont = fonts.Helvetica;
       const fontSize = docDefinition.footer.fontSize || 10;
       const textWidth = footerFont.widthOfTextAtSize(footerText, fontSize);
       const { width } = page.getSize();
-
       let x = margins.left;
       if (docDefinition.footer.alignment === 'right') x = width - margins.right - textWidth;
       else if (docDefinition.footer.alignment === 'center') x = width / 2 - textWidth / 2;
-
-      page.drawText(footerText, {
-        x,
-        y: margins.bottom / 2,
-        font: footerFont,
-        size: fontSize,
-        color: docDefinition.footer.color ? rgb(docDefinition.footer.color[0], docDefinition.footer.color[1], docDefinition.footer.color[2]) : rgb(0, 0, 0),
-      });
+      page.drawText(footerText, { x, y: margins.bottom / 2, font: footerFont, size: fontSize, color: docDefinition.footer.color ? rgb(docDefinition.footer.color[0], docDefinition.footer.color[1], docDefinition.footer.color[2]) : rgb(0, 0, 0) });
     }
   }
-
   if (options.output === 'base64') {
     return pdfDoc.saveAsBase64();
   }
