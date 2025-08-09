@@ -130,7 +130,7 @@ const docDefinition: PDFDocumentDefinition = {
         ]
     },
     {
-        text: 'Full-Width Table',
+        text: 'Full-Width Table (No Borders)',
         style: 'subheader',
     },
     {
@@ -143,7 +143,7 @@ const docDefinition: PDFDocumentDefinition = {
       }
     },
     {
-        text: 'Auto-width Table',
+        text: 'Auto-width Table with Styled Cells',
         style: 'subheader',
     },
     {
@@ -151,9 +151,9 @@ const docDefinition: PDFDocumentDefinition = {
         widths: ['auto', '*', 100, 'auto'],
         body: [
           [{text: 'Header 1', style: 'tableHeader'}, {text: 'Header 2', style: 'tableHeader'}, {text: 'Header 3', style: 'tableHeader'}, {text: 'Header 4', style: 'tableHeader'}],
-          ['Short', 'This column will expand to fill the remaining space.', 'Fixed 100', 'This is a cell with a bit more text.'],
-          ['A much longer text content', 'Another cell', '100', 'Short'],
-          ['Medium', 'And a third one', '100', 'A cell']
+          ['Short', 'This column will expand to fill the remaining space.', 'Fixed 100', {text: 'This cell is red', color: [1, 0, 0]}],
+          [{text: 'A much longer text content', bold: true}, 'Another cell', '100', 'Short'],
+          ['Medium', {text: 'This cell is blue and italic', color: [0, 0, 1], italics: true}, '100', 'A cell']
         ]
       },
       layout: {

@@ -151,10 +151,9 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
 
             const isObjectCell = typeof cell === 'object' && cell !== null;
             const cellText = isObjectCell ? String(cell.text) : String(cell);
-            const cellElement = isObjectCell ? cell : {};
+            const cellElement = resolveStyles(isObjectCell ? cell : { text: cellText }, docDefinition.styles);
             const cellFont = await getFont(cellElement, fonts, pdfDoc);
 
-            // Note: `fontSize` is from the table element, not yet cell-specific.
             const textWidth = cellFont.widthOfTextAtSize(cellText, fontSize);
             if (textWidth > maxWidth) {
               maxWidth = textWidth;
@@ -182,15 +181,18 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
         const wrappedCells = [];
         for (const [i, cell] of row.entries()) {
             const isObjectCell = typeof cell === 'object' && cell !== null;
-            const cellText = isObjectCell ? cell.text : cell;
-            const cellElement = isObjectCell ? cell : {}; // Use empty object for non-object cells to avoid errors
+            const cellText = isObjectCell ? String(cell.text) : String(cell);
+
+            // Resolve styles for the cell
+            const baseCellElement = isObjectCell ? cell : { text: cellText };
+            const cellElement = resolveStyles(baseCellElement, docDefinition.styles);
 
             const cellFont = await getFont(cellElement, fonts, pdfDoc);
             const lines = wrapText(cellText, cellFont, fontSize, columnWidths[i] - cellMargin * 2);
             if (lines.length > maxLines) maxLines = lines.length;
 
             wrappedCells.push({
-                ...(isObjectCell ? cell : { text: cellText }),
+                ...cellElement, // Use the fully styled cell element
                 lines,
                 font: cellFont,
                 fontName: getFontName(cellElement)
@@ -232,7 +234,7 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
             let lineX = currentX + cellMargin;
             if (cell.alignment === 'right') lineX = currentX + cellWidth - cellMargin - lineWidth;
             else if (cell.alignment === 'center') lineX = currentX + (cellWidth / 2) - (lineWidth / 2);
-            currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName });
+            currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName, color: cell.color });
             lineY -= lineHeight;
           }
           currentX += cellWidth;
