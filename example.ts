@@ -191,6 +191,19 @@ const docDefinition: PDFDocumentDefinition = {
         borderColor: [0.7, 0.7, 0.7],
         borderWidth: 0.5,
       }
+    },
+    {
+        text: 'Stack Layout Test',
+        style: 'subheader',
+        pageBreak: 'before',
+    },
+    {
+        alignment: 'center',
+        stack: [
+            { text: 'This is the first line in the stack.' },
+            { text: 'This is the second line, which is centered because the stack is centered.', margin: [0, 5, 0, 5] },
+            { text: 'This is the third line.' }
+        ]
     }
   ],
 };

@@ -63,32 +63,25 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
   const wrapText = (text: any, font: any, fontSize: number, maxWidth: number): string[] => {
     const textAsString = String(text ?? '');
     if (!textAsString) return [];
-
     const lines: string[] = [];
     const paragraphs = textAsString.split('\n');
-
     for (const paragraph of paragraphs) {
         if (paragraph === '') {
             lines.push('');
             continue;
         }
-
         const words = paragraph.split(' ');
         let currentLine = '';
-
         for (const word of words) {
             if (!word) continue;
-
             const testLine = currentLine === '' ? word : `${currentLine} ${word}`;
             const testWidth = font.widthOfTextAtSize(testLine, fontSize);
-
             if (testWidth <= maxWidth) {
                 currentLine = testLine;
             } else {
                 if (currentLine !== '') {
                     lines.push(currentLine);
                 }
-
                 const wordWidth = font.widthOfTextAtSize(word, fontSize);
                 if (wordWidth > maxWidth) {
                     lines.push(word);
@@ -105,9 +98,10 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
     return lines;
   };
 
-  for (const [i, initialElement] of (content as ContentElement[]).entries()) {
-    const element = resolveStyles(initialElement, docDefinition.styles);
-    if (element.pageBreak === 'before' && i > 0) {
+  const layoutElement = async (element: ContentElement) => {
+    element = resolveStyles(element, docDefinition.styles);
+
+    if (element.pageBreak === 'before') {
         addNewPage();
     }
     if (element.margin) {
@@ -139,7 +133,13 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
       const imageWidth = element.width || 150;
       if (y - imageHeight < margins.bottom) addNewPage();
       currentPage.elements.push({ type: 'image', image: element.image, x: margins.left, y: y - imageHeight, width: imageWidth, height: imageHeight });
-      y -= (imageHeight + (element.margin ? parseMargins(element.margin).bottom : 0));
+      y -= imageHeight;
+    } else if ('stack' in element) {
+      const { stack, ...parentStyle } = element;
+      for (const child of stack) {
+        const styledChild = { ...parentStyle, ...child };
+        await layoutElement(styledChild);
+      }
     } else if ('table' in element) {
       const { table } = element;
       const { body, widths } = table;
@@ -280,7 +280,12 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
      if (element.margin) {
         y -= parseMargins(element.margin).bottom;
     }
+  };
+
+  for (const element of content) {
+    await layoutElement(element);
   }
+
   return pages;
 }
 

@@ -53,7 +53,6 @@ export interface UnorderedListElement {
     ul: string[];
     style?: string | string[];
     pageBreak?: 'before';
-    // Future: support nested lists by making this (string | UnorderedListElement | OrderedListElement)[]
 }
 
 export interface OrderedListElement {
@@ -62,7 +61,14 @@ export interface OrderedListElement {
     pageBreak?: 'before';
 }
 
-export type ContentElement = TextElement | ImageElement | TableElement | UnorderedListElement | OrderedListElement;
+export interface StackElement {
+  stack: ContentElement[];
+  style?: string | string[];
+  alignment?: Alignment;
+  margin?: number | [number, number, number, number];
+}
+
+export type ContentElement = TextElement | ImageElement | TableElement | UnorderedListElement | OrderedListElement | StackElement;
 
 export interface FooterElement {
     text: string;
