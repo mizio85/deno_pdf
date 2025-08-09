@@ -67,21 +67,33 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
   const wrapText = (text: any, font: any, fontSize: number, maxWidth: number): string[] => {
     const textAsString = String(text ?? '');
     if (!textAsString) return [];
-    const words = textAsString.split(' ');
-    const lines: string[] = [];
-    let currentLine = '';
-    for (const word of words) {
-      const testLine = currentLine === '' ? word : `${currentLine} ${word}`;
-      const width = font.widthOfTextAtSize(testLine, fontSize);
-      if (width < maxWidth) {
-        currentLine = testLine;
-      } else {
-        lines.push(currentLine);
-        currentLine = word;
-      }
+
+    const allLines: string[] = [];
+    const paragraphs = textAsString.split('\n');
+
+    for (const paragraph of paragraphs) {
+        if (paragraph.trim() === '' && allLines.length > 0) {
+            allLines.push('');
+            continue;
+        }
+        const words = paragraph.split(' ').filter(w => w.length > 0);
+        if (words.length === 0) {
+            continue;
+        }
+        let currentLine = '';
+        for (const word of words) {
+            const testLine = currentLine === '' ? word : `${currentLine} ${word}`;
+            const width = font.widthOfTextAtSize(testLine, fontSize);
+            if (width < maxWidth) {
+                currentLine = testLine;
+            } else {
+                allLines.push(currentLine);
+                currentLine = word;
+            }
+        }
+        allLines.push(currentLine);
     }
-    lines.push(currentLine);
-    return lines;
+    return allLines;
   };
 
   for (const [i, initialElement] of (content as ContentElement[]).entries()) {
@@ -225,8 +237,15 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
                 continue;
             };
             const textHeight = cell.lines.length * lineHeight;
-            const ascent = cell.font.heightAtSize(fontSize) * 0.8;
-            let blockY = y - cellMargin - ascent - ((rowHeight - textHeight - cellMargin * 2) * (cell.verticalAlignment === 'middle' ? 0.5 : (cell.verticalAlignment === 'bottom' ? 1 : 0)));
+            const ascent = cell.font.heightAtSize(fontSize, { descent: false });
+            const freeSpace = rowHeight - textHeight - cellMargin * 2;
+            let blockY = y - cellMargin - ascent;
+
+            if (cell.verticalAlignment === 'middle') {
+                blockY -= freeSpace / 2;
+            } else if (cell.verticalAlignment === 'bottom') {
+                blockY -= freeSpace;
+            }
             const fillColor = typeof element.layout?.fillColor === 'function' ? element.layout.fillColor(rowIndex) : element.layout?.fillColor;
             currentPage.elements.push({ type: 'cell', x: currentX, y: y - rowHeight, width: cell.cellWidth, height: rowHeight, fillColor, borderColor: element.layout?.borderColor, borderWidth: element.layout?.borderWidth });
             let lineY = blockY;

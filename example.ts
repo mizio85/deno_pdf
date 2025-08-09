@@ -164,6 +164,26 @@ const docDefinition: PDFDocumentDefinition = {
         borderWidth: 0.5,
         fillColor: (rowIndex: number) => (rowIndex < 2) ? [0.85, 0.85, 0.85] : null,
       }
+    },
+    {
+        text: 'Vertical Alignment Test',
+        style: 'subheader',
+    },
+    {
+      table: {
+        widths: ['*', '*', '*'],
+        body: [
+            [
+                {text: 'Top-aligned text in a tall cell.', verticalAlignment: 'top'},
+                {text: 'Middle-aligned text in a tall cell.\n\nThis text has multiple lines.', verticalAlignment: 'middle'},
+                {text: 'Bottom-aligned text in a tall cell.', verticalAlignment: 'bottom'},
+            ]
+        ]
+      },
+      layout: {
+        borderColor: [0.7, 0.7, 0.7],
+        borderWidth: 0.5,
+      }
     }
   ],
 };
