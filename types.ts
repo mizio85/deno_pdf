@@ -28,6 +28,7 @@ export type TableCell = string | {
   alignment?: Alignment;
   verticalAlignment?: VerticalAlignment;
   color?: Color;
+  colSpan?: number;
 };
 
 export interface TableLayout {
@@ -42,6 +43,7 @@ export interface TableElement {
   table: {
     widths: ('*' | number | 'auto')[] | '*';
     body: TableCell[][];
+    headerRows?: number;
   };
   fontSize?: number;
   layout?: TableLayout;

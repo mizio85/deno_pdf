@@ -143,23 +143,26 @@ const docDefinition: PDFDocumentDefinition = {
       }
     },
     {
-        text: 'Auto-width Table with Styled Cells',
+        text: 'Complex Table (ColSpan and HeaderRows)',
         style: 'subheader',
     },
     {
       table: {
         widths: ['auto', '*', 100, 'auto'],
+        headerRows: 2,
         body: [
-          [{text: 'Header 1', style: 'tableHeader'}, {text: 'Header 2', style: 'tableHeader'}, {text: 'Header 3', style: 'tableHeader'}, {text: 'Header 4', style: 'tableHeader'}],
-          ['Short', 'This column will expand to fill the remaining space.', 'Fixed 100', {text: 'This cell is red', color: [1, 0, 0]}],
-          [{text: 'A much longer text content', bold: true}, 'Another cell', '100', 'Short'],
-          ['Medium', {text: 'This cell is blue and italic', color: [0, 0, 1], italics: true}, '100', 'A cell']
+          [{text: 'Main Header', style: 'tableHeader', colSpan: 4, alignment: 'center'}, {}, {}, {}],
+          [{text: 'Sub Header 1', style: 'tableHeader'}, {text: 'Sub Header 2', style: 'tableHeader'}, {text: 'Sub Header 3', style: 'tableHeader'}, {text: 'Sub Header 4', style: 'tableHeader'}],
+          ['Row 1, Cell 1', 'Row 1, Cell 2', 'Row 1, Cell 3', 'Row 1, Cell 4'],
+          ['Row 2, Cell 1', {text: 'This cell spans two columns', colSpan: 2, alignment: 'center'}, {}, 'Row 2, Cell 4'],
+          ['Row 3, Cell 1', 'Row 3, Cell 2', 'Row 3, Cell 3', 'Row 3, Cell 4'],
+          ...Array(20).fill(0).map((_, i) => [`Row ${i + 4}`, `Col 2, Row ${i + 4}`, `Col 3, Row ${i + 4}`, `Col 4, Row ${i + 4}`])
         ]
       },
       layout: {
         borderColor: [0.7, 0.7, 0.7],
         borderWidth: 0.5,
-        fillColor: (rowIndex: number) => (rowIndex === 0) ? [0.85, 0.85, 0.85] : null,
+        fillColor: (rowIndex: number) => (rowIndex < 2) ? [0.85, 0.85, 0.85] : null,
       }
     }
   ],

@@ -176,70 +176,78 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
         columnWidths = Array(numColumns).fill(100); // Default fallback
       }
 
-      for (const row of body) {
+      const headerRowsCount = table.headerRows || 0;
+      const headerRows = body.slice(0, headerRowsCount);
+      const bodyRows = body.slice(headerRowsCount);
+
+      const drawRow = async (row: any[], rowIndex: number, isHeader = false) => {
         let maxLines = 0;
         const wrappedCells = [];
-        for (const [i, cell] of row.entries()) {
-            const isObjectCell = typeof cell === 'object' && cell !== null;
+        for (let i = 0; i < numColumns; i++) {
+            const cell = row[i];
+            if (!cell) {
+                wrappedCells.push(null);
+                continue;
+            };
+            const isObjectCell = typeof cell === 'object';
             const cellText = isObjectCell ? String(cell.text) : String(cell);
-
-            // Resolve styles for the cell
             const baseCellElement = isObjectCell ? cell : { text: cellText };
             const cellElement = resolveStyles(baseCellElement, docDefinition.styles);
-
+            const colSpan = (cellElement.colSpan && cellElement.colSpan > 1) ? cellElement.colSpan : 1;
+            const cellWidth = columnWidths.slice(i, i + colSpan).reduce((a, b) => a + b, 0);
             const cellFont = await getFont(cellElement, fonts, pdfDoc);
-            const lines = wrapText(cellText, cellFont, fontSize, columnWidths[i] - cellMargin * 2);
+            const lines = wrapText(cellText, cellFont, fontSize, cellWidth - cellMargin * 2);
             if (lines.length > maxLines) maxLines = lines.length;
-
-            wrappedCells.push({
-                ...cellElement, // Use the fully styled cell element
-                lines,
-                font: cellFont,
-                fontName: getFontName(cellElement)
-            });
+            wrappedCells.push({ ...cellElement, lines, font: cellFont, fontName: getFontName(cellElement), cellWidth });
+            if (colSpan > 1) {
+                for (let j = 1; j < colSpan; j++) { wrappedCells.push(null); }
+                i += colSpan - 1;
+            }
         }
 
-        const lineHeight = fonts.Helvetica.heightAtSize(fontSize); // Base line height on standard font
+        const lineHeight = fonts.Helvetica.heightAtSize(fontSize);
         const rowHeight = maxLines * lineHeight + cellMargin * 2;
-        if (y - rowHeight < margins.bottom) addNewPage();
+
+        if (y - rowHeight < margins.bottom) {
+            addNewPage();
+            if (!isHeader) {
+                for (const [headerIndex, headerRow] of headerRows.entries()) {
+                    await drawRow(headerRow, headerIndex, true);
+                }
+            }
+        }
 
         let currentX = margins.left;
         for (let i = 0; i < wrappedCells.length; i++) {
-          const cell = wrappedCells[i];
-          const cellWidth = columnWidths[i];
-          const textHeight = cell.lines.length * lineHeight;
-
-          const ascent = cell.font.heightAtSize(fontSize) * 0.8;
-          const freeSpace = rowHeight - textHeight - cellMargin * 2;
-          let blockY = y - cellMargin - ascent;
-
-          if (cell.verticalAlignment === 'middle') blockY -= freeSpace / 2;
-          else if (cell.verticalAlignment === 'bottom') blockY -= freeSpace;
-
-          const fillColor = typeof element.layout?.fillColor === 'function'
-            ? element.layout.fillColor(body.indexOf(row))
-            : element.layout?.fillColor;
-
-          currentPage.elements.push({
-            type: 'cell',
-            x: currentX, y: y - rowHeight, width: cellWidth, height: rowHeight,
-            fillColor: fillColor,
-            borderColor: element.layout?.borderColor,
-            borderWidth: element.layout?.borderWidth,
-          });
-
-          let lineY = blockY;
-          for(const line of cell.lines) {
-            const lineWidth = cell.font.widthOfTextAtSize(line, fontSize);
-            let lineX = currentX + cellMargin;
-            if (cell.alignment === 'right') lineX = currentX + cellWidth - cellMargin - lineWidth;
-            else if (cell.alignment === 'center') lineX = currentX + (cellWidth / 2) - (lineWidth / 2);
-            currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName, color: cell.color });
-            lineY -= lineHeight;
-          }
-          currentX += cellWidth;
+            const cell = wrappedCells[i];
+            if (!cell) {
+                if (columnWidths[i]) currentX += columnWidths[i];
+                continue;
+            };
+            const textHeight = cell.lines.length * lineHeight;
+            const ascent = cell.font.heightAtSize(fontSize) * 0.8;
+            let blockY = y - cellMargin - ascent - ((rowHeight - textHeight - cellMargin * 2) * (cell.verticalAlignment === 'middle' ? 0.5 : (cell.verticalAlignment === 'bottom' ? 1 : 0)));
+            const fillColor = typeof element.layout?.fillColor === 'function' ? element.layout.fillColor(rowIndex) : element.layout?.fillColor;
+            currentPage.elements.push({ type: 'cell', x: currentX, y: y - rowHeight, width: cell.cellWidth, height: rowHeight, fillColor, borderColor: element.layout?.borderColor, borderWidth: element.layout?.borderWidth });
+            let lineY = blockY;
+            for (const line of cell.lines) {
+                const lineWidth = cell.font.widthOfTextAtSize(line, fontSize);
+                let lineX = currentX + cellMargin;
+                if (cell.alignment === 'right') lineX = currentX + cell.cellWidth - cellMargin - lineWidth;
+                else if (cell.alignment === 'center') lineX = currentX + (cell.cellWidth / 2) - (lineWidth / 2);
+                currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName, color: cell.color });
+                lineY -= lineHeight;
+            }
+            currentX += cell.cellWidth;
         }
         y -= rowHeight;
+      };
+
+      for (const [headerIndex, headerRow] of headerRows.entries()) {
+        await drawRow(headerRow, headerIndex, true);
+      }
+      for (const [bodyIndex, bodyRow] of bodyRows.entries()) {
+        await drawRow(bodyRow, headerRowsCount + bodyIndex, false);
       }
       y -= 10;
       if (element.margin) y -= parseMargins(element.margin).bottom;
