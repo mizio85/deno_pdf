@@ -1,6 +1,6 @@
 import { PDFDocument, rgb, StandardFonts, PageSizes } from 'https://cdn.skypack.dev/pdf-lib';
 export * from './types.ts';
-import { PDFDocumentDefinition, ContentElement } from './types.ts';
+import { PDFDocumentDefinition, ContentElement, TextElement } from './types.ts';
 
 const parseMargins = (margin: any) => {
   if (typeof margin === 'number') return { top: margin, bottom: margin, left: margin, right: margin };
@@ -98,7 +98,8 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
     return lines;
   };
 
-  const layoutElement = async (element: ContentElement) => {
+  const layoutElement = async (element: ContentElement, parentStyle: any = {}) => {
+    element = { ...parentStyle, ...element };
     element = resolveStyles(element, docDefinition.styles);
 
     if (element.pageBreak === 'before') {
@@ -108,7 +109,12 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
         y -= parseMargins(element.margin).top;
     }
 
-    if ('text' in element) {
+    if ('stack' in element) {
+      const { stack, ...pStyle } = element;
+      for (const child of stack) {
+        await layoutElement(child, pStyle);
+      }
+    } else if ('text' in element) {
       const font = await getFont(element, fonts, pdfDoc);
       const fontSize = element.fontSize || 12;
       const lines = wrapText(element.text, font, fontSize, width - margins.left - margins.right);
@@ -134,12 +140,6 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
       if (y - imageHeight < margins.bottom) addNewPage();
       currentPage.elements.push({ type: 'image', image: element.image, x: margins.left, y: y - imageHeight, width: imageWidth, height: imageHeight });
       y -= imageHeight;
-    } else if ('stack' in element) {
-      const { stack, ...parentStyle } = element;
-      for (const child of stack) {
-        const styledChild = { ...parentStyle, ...child };
-        await layoutElement(styledChild);
-      }
     } else if ('table' in element) {
       const { table } = element;
       const { body, widths } = table;
@@ -159,11 +159,20 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
             const cell = row[i];
             if (!cell) continue;
             const isObjectCell = typeof cell === 'object' && cell !== null;
-            const cellText = isObjectCell ? String(cell.text) : String(cell);
-            const cellElement = resolveStyles(isObjectCell ? cell : { text: cellText }, docDefinition.styles);
-            const cellFont = await getFont(cellElement, fonts, pdfDoc);
-            const textWidth = cellFont.widthOfTextAtSize(cellText, fontSize);
-            if (textWidth > maxWidth) maxWidth = textWidth;
+            const cellText = isObjectCell ? String(cell.text ?? '') : String(cell);
+            if(isObjectCell && cell.stack) {
+                // Auto-width for stacks in cells is not fully supported, this is a basic implementation
+                for(const stackItem of cell.stack) {
+                    const itemFont = await getFont(stackItem, fonts, pdfDoc);
+                    const textWidth = itemFont.widthOfTextAtSize(stackItem.text, stackItem.fontSize || fontSize);
+                    if (textWidth > maxWidth) maxWidth = textWidth;
+                }
+            } else {
+                const cellElement = resolveStyles(isObjectCell ? cell : { text: cellText }, docDefinition.styles);
+                const cellFont = await getFont(cellElement, fonts, pdfDoc);
+                const textWidth = cellFont.widthOfTextAtSize(cellText, fontSize);
+                if (textWidth > maxWidth) maxWidth = textWidth;
+            }
           }
           return maxWidth + cellMargin * 2;
         }));
@@ -183,30 +192,52 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
       const drawRow = async (row: any[], rowIndex: number, isHeader = false) => {
         let maxRowHeight = 0;
         const wrappedCells = [];
+
         for (let i = 0; i < numColumns; i++) {
             const cell = row[i];
             if (!cell) {
                 wrappedCells.push(null);
                 continue;
             };
+
             const isObjectCell = typeof cell === 'object';
-            const cellText = isObjectCell ? String(cell.text) : String(cell);
-            const baseCellElement = isObjectCell ? cell : { text: cellText };
+            const baseCellElement = isObjectCell ? cell : { text: String(cell) };
             const cellElement = resolveStyles(baseCellElement, docDefinition.styles);
+
             const colSpan = (cellElement.colSpan && cellElement.colSpan > 1) ? cellElement.colSpan : 1;
             const cellWidth = columnWidths.slice(i, i + colSpan).reduce((a, b) => a + b, 0);
-            const cellFont = await getFont(cellElement, fonts, pdfDoc);
-            const lines = wrapText(cellText, cellFont, fontSize, cellWidth - cellMargin * 2);
-            const cellLineHeight = cellFont.heightAtSize(fontSize);
-            const cellTextHeight = lines.length * cellLineHeight;
-            const totalCellHeight = cellTextHeight + cellMargin * 2;
+
+            let totalCellHeight = 0;
+            if (cellElement.stack) {
+                let stackHeight = 0;
+                const processedStack = [];
+                for(const stackItem of cellElement.stack) {
+                    const itemFont = await getFont(stackItem, fonts, pdfDoc);
+                    const itemLineHeight = itemFont.heightAtSize(stackItem.fontSize || fontSize);
+                    const lines = wrapText(stackItem.text, itemFont, stackItem.fontSize || fontSize, cellWidth - cellMargin * 2);
+                    processedStack.push({ ...stackItem, lines, font: itemFont, lineHeight: itemLineHeight });
+                    stackHeight += lines.length * itemLineHeight;
+                }
+                totalCellHeight = stackHeight + cellMargin * 2;
+                wrappedCells.push({ ...cellElement, stack: processedStack, cellWidth });
+            } else {
+                const cellFont = await getFont(cellElement, fonts, pdfDoc);
+                const cellText = String(cellElement.text ?? '');
+                const lines = wrapText(cellText, cellFont, fontSize, cellWidth - cellMargin * 2);
+                const cellLineHeight = cellFont.heightAtSize(fontSize);
+                const cellTextHeight = lines.length * cellLineHeight;
+                totalCellHeight = cellTextHeight + cellMargin * 2;
+                wrappedCells.push({ ...cellElement, lines, font: cellFont, fontName: getFontName(cellElement), cellWidth, lineHeight: cellLineHeight });
+            }
+
             if (totalCellHeight > maxRowHeight) maxRowHeight = totalCellHeight;
-            wrappedCells.push({ ...cellElement, lines, font: cellFont, fontName: getFontName(cellElement), cellWidth, lineHeight: cellLineHeight });
+
             if (colSpan > 1) {
                 for (let j = 1; j < colSpan; j++) { wrappedCells.push(null); }
                 i += colSpan - 1;
             }
         }
+
         const rowHeight = maxRowHeight;
         if (y - rowHeight < margins.bottom && !isHeader) {
             addNewPage();
@@ -214,6 +245,7 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
                 await drawRow(headerRow, headerIndex, true);
             }
         }
+
         let currentX = margins.left;
         for (let i = 0; i < wrappedCells.length; i++) {
             const cell = wrappedCells[i];
@@ -221,23 +253,56 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
                 if (columnWidths[i]) currentX += columnWidths[i];
                 continue;
             };
-            const textHeight = cell.lines.length * cell.lineHeight;
-            const ascent = cell.font.heightAtSize(fontSize, { descent: false });
-            const freeSpace = rowHeight - textHeight - cellMargin * 2;
-            let blockY = y - cellMargin - ascent;
-            if (cell.verticalAlignment === 'middle') blockY -= freeSpace / 2;
-            else if (cell.verticalAlignment === 'bottom') blockY -= freeSpace;
+
             const fillColor = typeof element.layout?.fillColor === 'function' ? element.layout.fillColor(rowIndex) : element.layout?.fillColor;
             currentPage.elements.push({ type: 'cell', x: currentX, y: y - rowHeight, width: cell.cellWidth, height: rowHeight, fillColor, borderColor: element.layout?.borderColor, borderWidth: element.layout?.borderWidth });
-            let lineY = blockY;
-            const descent = cell.font.heightAtSize(fontSize) - ascent;
-            for (const line of cell.lines) {
-                const lineWidth = cell.font.widthOfTextAtSize(line, fontSize);
-                let lineX = currentX + cellMargin;
-                if (cell.alignment === 'right') lineX = currentX + cell.cellWidth - cellMargin - lineWidth;
-                else if (cell.alignment === 'center') lineX = currentX + (cell.cellWidth / 2) - (lineWidth / 2);
-                currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName, color: cell.color, width: lineWidth, ascent, descent });
-                lineY -= cell.lineHeight;
+
+            if (cell.stack) {
+                let stackTextHeight = 0;
+                cell.stack.forEach((item: any) => stackTextHeight += item.lines.length * item.lineHeight);
+
+                const freeSpace = rowHeight - stackTextHeight - cellMargin * 2;
+                let currentStackY = y - cellMargin;
+                if (cell.verticalAlignment === 'middle') currentStackY -= freeSpace / 2;
+                else if (cell.verticalAlignment === 'bottom') currentStackY -= freeSpace;
+
+                for (const item of cell.stack) {
+                    const itemFontSize = item.fontSize || fontSize;
+                    const itemFont = item.font;
+                    const ascent = itemFont.heightAtSize(itemFontSize, { descent: false });
+                    const descent = itemFont.heightAtSize(itemFontSize) - ascent;
+                    let lineY = currentStackY - ascent;
+
+                    for (const line of item.lines) {
+                         const lineWidth = itemFont.widthOfTextAtSize(line, itemFontSize);
+                         let lineX = currentX + cellMargin;
+                         const parentAlignment = item.alignment || cell.alignment || element.alignment;
+                         if (parentAlignment === 'right') lineX = currentX + cell.cellWidth - cellMargin - lineWidth;
+                         else if (parentAlignment === 'center') lineX = currentX + (cell.cellWidth / 2) - (lineWidth / 2);
+
+                         currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize: itemFontSize, font: getFontName(item), color: item.color, width: lineWidth, ascent, descent });
+                         lineY -= item.lineHeight;
+                    }
+                    currentStackY -= item.lines.length * item.lineHeight;
+                }
+            } else {
+                const textHeight = cell.lines.length * cell.lineHeight;
+                const ascent = cell.font.heightAtSize(fontSize, { descent: false });
+                const freeSpace = rowHeight - textHeight - cellMargin * 2;
+                let blockY = y - cellMargin - ascent;
+                if (cell.verticalAlignment === 'middle') blockY -= freeSpace / 2;
+                else if (cell.verticalAlignment === 'bottom') blockY -= freeSpace;
+
+                let lineY = blockY;
+                const descent = cell.font.heightAtSize(fontSize) - ascent;
+                for (const line of cell.lines) {
+                    const lineWidth = cell.font.widthOfTextAtSize(line, fontSize);
+                    let lineX = currentX + cellMargin;
+                    if (cell.alignment === 'right') lineX = currentX + cell.cellWidth - cellMargin - lineWidth;
+                    else if (cell.alignment === 'center') lineX = currentX + (cell.cellWidth / 2) - (lineWidth / 2);
+                    currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName, color: cell.color, width: lineWidth, ascent, descent });
+                    lineY -= cell.lineHeight;
+                }
             }
             currentX += cell.cellWidth;
         }
@@ -277,6 +342,7 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
             y -= (itemText.length + 1) * lineHeight;
         }
     }
+
      if (element.margin) {
         y -= parseMargins(element.margin).bottom;
     }

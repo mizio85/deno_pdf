@@ -20,7 +20,8 @@ export interface ImageElement {
 }
 
 export type TableCell = string | {
-  text: string;
+  text?: string;
+  stack?: TextElement[];
   style?: string | string[];
   font?: StandardFont;
   bold?: boolean;

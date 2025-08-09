@@ -204,6 +204,31 @@ const docDefinition: PDFDocumentDefinition = {
             { text: 'This is the second line, which is centered because the stack is centered.', margin: [0, 5, 0, 5] },
             { text: 'This is the third line.' }
         ]
+    },
+    {
+        text: 'Stacks in Tables',
+        style: 'subheader',
+    },
+    {
+        table: {
+            widths: ['*', 'auto'],
+            body: [
+                ['Column 1', 'Column 2'],
+                [
+                    {
+                        stack: [
+                            { text: 'This is a stack in a cell.' },
+                            { text: 'Second line of the stack.', color: [0, 0, 1] },
+                        ]
+                    },
+                    'This is a regular cell. The row height should be determined by the stack on the left.'
+                ]
+            ]
+        },
+        layout: {
+            borderColor: [0.7, 0.7, 0.7],
+            borderWidth: 0.5,
+        }
     }
   ],
 };
