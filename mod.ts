@@ -193,7 +193,7 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
       const bodyRows = body.slice(headerRowsCount);
 
       const drawRow = async (row: any[], rowIndex: number, isHeader = false) => {
-        let maxLines = 0;
+        let maxRowHeight = 0;
         const wrappedCells = [];
         for (let i = 0; i < numColumns; i++) {
             const cell = row[i];
@@ -209,16 +209,22 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
             const cellWidth = columnWidths.slice(i, i + colSpan).reduce((a, b) => a + b, 0);
             const cellFont = await getFont(cellElement, fonts, pdfDoc);
             const lines = wrapText(cellText, cellFont, fontSize, cellWidth - cellMargin * 2);
-            if (lines.length > maxLines) maxLines = lines.length;
-            wrappedCells.push({ ...cellElement, lines, font: cellFont, fontName: getFontName(cellElement), cellWidth });
+
+            const cellLineHeight = cellFont.heightAtSize(fontSize);
+            const cellTextHeight = lines.length * cellLineHeight;
+            const totalCellHeight = cellTextHeight + cellMargin * 2;
+            if (totalCellHeight > maxRowHeight) {
+                maxRowHeight = totalCellHeight;
+            }
+
+            wrappedCells.push({ ...cellElement, lines, font: cellFont, fontName: getFontName(cellElement), cellWidth, lineHeight: cellLineHeight });
             if (colSpan > 1) {
                 for (let j = 1; j < colSpan; j++) { wrappedCells.push(null); }
                 i += colSpan - 1;
             }
         }
 
-        const lineHeight = fonts.Helvetica.heightAtSize(fontSize);
-        const rowHeight = maxLines * lineHeight + cellMargin * 2;
+        const rowHeight = maxRowHeight;
 
         if (y - rowHeight < margins.bottom) {
             addNewPage();
@@ -236,7 +242,7 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
                 if (columnWidths[i]) currentX += columnWidths[i];
                 continue;
             };
-            const textHeight = cell.lines.length * lineHeight;
+            const textHeight = cell.lines.length * cell.lineHeight;
             const ascent = cell.font.heightAtSize(fontSize, { descent: false });
             const freeSpace = rowHeight - textHeight - cellMargin * 2;
             let blockY = y - cellMargin - ascent;
@@ -255,7 +261,7 @@ async function performLayout(docDefinition: PDFDocumentDefinition, pdfDoc: PDFDo
                 if (cell.alignment === 'right') lineX = currentX + cell.cellWidth - cellMargin - lineWidth;
                 else if (cell.alignment === 'center') lineX = currentX + (cell.cellWidth / 2) - (lineWidth / 2);
                 currentPage.elements.push({ type: 'text', text: line, x: lineX, y: lineY, fontSize, font: cell.fontName, color: cell.color });
-                lineY -= lineHeight;
+                lineY -= cell.lineHeight;
             }
             currentX += cell.cellWidth;
         }
